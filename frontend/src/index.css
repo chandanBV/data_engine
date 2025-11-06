@@ -1,0 +1,223 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+body {
+    margin: 0;
+    font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+code {
+    font-family: 'JetBrains Mono', source-code-pro, Menlo, Monaco, Consolas, monospace;
+}
+
+@layer base {
+    :root {
+        /* Modern tech color palette - Deep ocean blue with cyan accents */
+        --background: 220 25% 97%;
+        --foreground: 220 20% 12%;
+        
+        --card: 0 0% 100%;
+        --card-foreground: 220 20% 12%;
+        
+        --popover: 0 0% 100%;
+        --popover-foreground: 220 20% 12%;
+        
+        /* Primary: Deep tech blue */
+        --primary: 217 91% 42%;
+        --primary-foreground: 0 0% 100%;
+        --primary-glow: 217 91% 60%;
+        
+        /* Secondary: Vibrant cyan */
+        --secondary: 190 95% 50%;
+        --secondary-foreground: 220 20% 12%;
+        
+        /* Accent: Electric purple */
+        --accent: 265 85% 58%;
+        --accent-foreground: 0 0% 100%;
+        
+        --muted: 220 15% 92%;
+        --muted-foreground: 220 12% 45%;
+        
+        --destructive: 0 84% 60%;
+        --destructive-foreground: 0 0% 98%;
+        
+        --border: 220 15% 88%;
+        --input: 220 15% 88%;
+        --ring: 217 91% 42%;
+        
+        /* Chart colors */
+        --chart-1: 217 91% 42%;
+        --chart-2: 190 95% 50%;
+        --chart-3: 265 85% 58%;
+        --chart-4: 45 93% 58%;
+        --chart-5: 340 82% 52%;
+        
+        /* Custom tokens for WASM project */
+        --code-bg: 220 25% 95%;
+        --code-border: 220 15% 85%;
+        --success: 142 71% 45%;
+        --warning: 38 92% 50%;
+        --info: 199 89% 48%;
+        
+        /* Gradients */
+        --gradient-primary: linear-gradient(135deg, hsl(217 91% 42%), hsl(190 95% 50%));
+        --gradient-secondary: linear-gradient(135deg, hsl(265 85% 58%), hsl(217 91% 52%));
+        --gradient-subtle: linear-gradient(180deg, hsl(220 25% 98%), hsl(220 25% 95%));
+        
+        /* Shadows */
+        --shadow-sm: 0 1px 2px 0 hsl(220 20% 12% / 0.05);
+        --shadow-md: 0 4px 6px -1px hsl(220 20% 12% / 0.1);
+        --shadow-lg: 0 10px 15px -3px hsl(220 20% 12% / 0.1);
+        --shadow-glow: 0 0 20px hsl(217 91% 42% / 0.3);
+        
+        --radius: 0.75rem;
+        
+        /* Animations */
+        --transition-smooth: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        --transition-bounce: 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+    }
+    
+    .dark {
+        --background: 220 30% 8%;
+        --foreground: 220 15% 95%;
+        
+        --card: 220 25% 11%;
+        --card-foreground: 220 15% 95%;
+        
+        --popover: 220 25% 11%;
+        --popover-foreground: 220 15% 95%;
+        
+        --primary: 217 91% 55%;
+        --primary-foreground: 0 0% 100%;
+        --primary-glow: 217 91% 70%;
+        
+        --secondary: 190 95% 45%;
+        --secondary-foreground: 220 30% 8%;
+        
+        --accent: 265 85% 65%;
+        --accent-foreground: 0 0% 100%;
+        
+        --muted: 220 20% 18%;
+        --muted-foreground: 220 12% 60%;
+        
+        --destructive: 0 84% 60%;
+        --destructive-foreground: 0 0% 98%;
+        
+        --border: 220 20% 22%;
+        --input: 220 20% 22%;
+        --ring: 217 91% 55%;
+        
+        --chart-1: 217 91% 55%;
+        --chart-2: 190 95% 50%;
+        --chart-3: 265 85% 65%;
+        --chart-4: 45 93% 58%;
+        --chart-5: 340 82% 60%;
+        
+        --code-bg: 220 25% 12%;
+        --code-border: 220 20% 25%;
+        --success: 142 71% 50%;
+        --warning: 38 92% 55%;
+        --info: 199 89% 55%;
+        
+        --gradient-primary: linear-gradient(135deg, hsl(217 91% 55%), hsl(190 95% 50%));
+        --gradient-secondary: linear-gradient(135deg, hsl(265 85% 65%), hsl(217 91% 60%));
+        --gradient-subtle: linear-gradient(180deg, hsl(220 30% 10%), hsl(220 30% 8%));
+        
+        --shadow-sm: 0 1px 2px 0 hsl(0 0% 0% / 0.2);
+        --shadow-md: 0 4px 6px -1px hsl(0 0% 0% / 0.3);
+        --shadow-lg: 0 10px 15px -3px hsl(0 0% 0% / 0.4);
+        --shadow-glow: 0 0 30px hsl(217 91% 55% / 0.4);
+    }
+}
+
+@layer base {
+    * {
+        @apply border-border;
+    }
+    body {
+        @apply bg-background text-foreground;
+    }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+::-webkit-scrollbar-track {
+    @apply bg-muted;
+}
+
+::-webkit-scrollbar-thumb {
+    @apply bg-muted-foreground/30 rounded-lg;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    @apply bg-muted-foreground/50;
+}
+
+/* Code block styling */
+.code-block {
+    @apply bg-[hsl(var(--code-bg))] border border-[hsl(var(--code-border))] rounded-lg p-4 font-mono text-sm;
+}
+
+/* Glow effect */
+.glow-effect {
+    box-shadow: var(--shadow-glow);
+}
+
+/* Gradient text */
+.gradient-text {
+    background: var(--gradient-primary);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+/* Card hover effect */
+.card-hover {
+    transition: transform var(--transition-smooth), box-shadow var(--transition-smooth);
+}
+
+.card-hover:hover {
+    transform: translateY(-4px);
+    box-shadow: var(--shadow-lg);
+}
+
+@layer base {
+    [data-debug-wrapper="true"] {
+        display: contents !important;
+    }
+
+    [data-debug-wrapper="true"] > * {
+        margin-left: inherit;
+        margin-right: inherit;
+        margin-top: inherit;
+        margin-bottom: inherit;
+        padding-left: inherit;
+        padding-right: inherit;
+        padding-top: inherit;
+        padding-bottom: inherit;
+        column-gap: inherit;
+        row-gap: inherit;
+        gap: inherit;
+        border-left-width: inherit;
+        border-right-width: inherit;
+        border-top-width: inherit;
+        border-bottom-width: inherit;
+        border-left-style: inherit;
+        border-right-style: inherit;
+        border-top-style: inherit;
+        border-bottom-style: inherit;
+        border-left-color: inherit;
+        border-right-color: inherit;
+        border-top-color: inherit;
+        border-bottom-color: inherit;
+    }
+}
