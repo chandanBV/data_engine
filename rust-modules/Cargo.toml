@@ -1,9 +1,9 @@
 [workspace]
 members = [
     "data-engine",
-    "chart-renderer",
-    "query-optimizer",
-    "parallel-compute",
+    # "chart-renderer",
+    # "query-optimizer",
+    # "parallel-compute",
 ]
 
 [workspace.dependencies]

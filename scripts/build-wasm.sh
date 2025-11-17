@@ -28,7 +28,8 @@ fi
 mkdir -p "$FRONTEND_WASM_DIR"
 
 # Array of modules to build
-MODULES=("data-engine" "chart-renderer" "query-optimizer" "parallel-compute")
+MODULES=("data-engine")
+# "chart-renderer" "query-optimizer" "parallel-compute"
 
 # Ensure wasm-pack is available
 if ! command -v wasm-pack >/dev/null 2>&1; then

@@ -1,16 +1,82 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Navigation } from '../components/Navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { Alert, AlertDescription } from '../components/ui/alert';
-import { Database, Play, Code2, Info, Zap } from 'lucide-react';
+import { Database, Play, Code2, Info, Zap, Upload } from 'lucide-react';
 import { toast } from 'sonner';
+import initSync, { DataEngine } from '../wasm/data-engine/data_engine.js';
+
+// Global worker counter for tracking
+let activeWorkers = 0;
 
 const DataEnginePage = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [result, setResult] = useState(null);
+  const [uploadedData, setUploadedData] = useState(null);
+  const [uploadStatus, setUploadStatus] = useState(null);
+  const [dataEngine, setDataEngine] = useState(null);
+  const [worker, setWorker] = useState(null);
+
+  useEffect(() => {
+    // Initialize web worker
+    activeWorkers++;
+    console.log(`🚀 Creating web worker #${activeWorkers} (Total active: ${activeWorkers})`);
+
+    const csvWorker = new Worker(new URL('../workers/csvWorker.js', import.meta.url), {
+      type: 'module'
+    });
+
+    csvWorker.onmessage = (e) => {
+      const { type, result, error, dataSize, processingTime } = e.data;
+
+      switch (type) {
+        case 'INIT_SUCCESS':
+          console.log('Worker initialized successfully');
+          break;
+        case 'LOAD_SUCCESS':
+          setUploadedData({ size: dataSize, result });
+          setUploadStatus('success');
+          console.timeEnd('Worker Processing');
+          console.timeEnd('File Upload & Processing');
+          console.log(`Worker processing completed in ${processingTime?.toFixed(2) || 'N/A'}ms`);
+          console.log("Worker Result: ", result);
+          console.log("Data Engine: ", result);
+          toast.success(`CSV file uploaded and processed successfully! Loaded ${dataSize} bytes`);
+          break;
+        case 'ERROR':
+          setUploadStatus('error');
+          toast.error(`Worker error: ${error}`);
+          break;
+        default:
+          console.log('Unknown worker message:', type);
+      }
+    };
+
+    csvWorker.onerror = (error) => {
+      console.error('Worker error:', error);
+      setUploadStatus('error');
+      toast.error('Worker failed to initialize');
+    };
+
+    // Initialize the worker
+    csvWorker.postMessage({ type: 'INIT' });
+    setWorker(csvWorker);
+
+    // Cleanup
+    return () => {
+      activeWorkers--;
+      console.log(`🛑 Terminating web worker (Total active: ${activeWorkers})`);
+      csvWorker.terminate();
+    };
+  }, []);
+
+  // Log worker status changes
+  useEffect(() => {
+    console.log(`📊 Current Status - Workers: ${activeWorkers}, Upload: ${uploadStatus || 'idle'}, Worker Ready: ${!!worker}`);
+  }, [worker, uploadStatus]);
 
   // Mock data for demonstration
   const sampleData = [
@@ -20,6 +86,38 @@ const DataEnginePage = () => {
     { id: 4, category: 'Food', sales: 600, region: 'West' },
     { id: 5, category: 'Clothing', sales: 950, region: 'North' },
   ];
+
+  const handleFileUpload = async (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    console.time('File Upload & Processing');
+    console.time('File Reading');
+
+    setUploadStatus('uploading');
+    setUploadedData(null);
+
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+
+      console.timeEnd('File Reading');
+      console.log(`File read: ${file.name} (${(arrayBuffer.byteLength / 1024 / 1024).toFixed(2)} MB)`);
+
+      console.time('Worker Processing');
+
+      if (worker) {
+        // Send the ArrayBuffer to the worker
+        worker.postMessage({ type: 'LOAD_CSV', data: arrayBuffer, fileName: file.name, fileSize: file.size });
+      } else {
+        throw new Error('Worker not initialized');
+      }
+    } catch (error) {
+      console.timeEnd('File Upload & Processing');
+      console.error('Upload failed:', error);
+      setUploadStatus('error');
+      toast.error('Failed to upload and process CSV file.');
+    }
+  };
 
   const handleProcess = (operation) => {
     setIsProcessing(true);
@@ -101,8 +199,39 @@ const DataEnginePage = () => {
         </div>
 
         <div className="grid lg:grid-cols-3 gap-6">
-          {/* Left Column - Operations */}
+          {/* Left Column - File Upload and Operations */}
           <div className="lg:col-span-1 space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Upload className="h-5 w-5 text-chart-1" />
+                  Upload CSV
+                </CardTitle>
+                <CardDescription>Upload a CSV file to load data into the engine</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  <div className="text-sm text-muted-foreground">
+                    Active Workers: {activeWorkers} | Status: {uploadStatus || 'Ready'}
+                  </div>
+                  <input
+                    type="file"
+                    accept=".csv"
+                    onChange={handleFileUpload}
+                    className="w-full text-sm file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-chart-1 file:text-white hover:file:bg-chart-1/90"
+                    disabled={!worker}
+                  />
+                  {uploadStatus && (
+                    <div className="text-sm">
+                      {uploadStatus === 'uploading' && <span className="text-blue-600">Uploading...</span>}
+                      {uploadStatus === 'success' && <span className="text-green-600">Upload successful!</span>}
+                      {uploadStatus === 'error' && <span className="text-red-600">Upload failed.</span>}
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -128,7 +257,7 @@ const DataEnginePage = () => {
                   variant="outline"
                 >
                   <Play className="h-4 w-4" />
-                  Filter (Sales > 900)
+                  {`Filter (Sales > 900)`}
                 </Button>
                 <Button
                   onClick={() => handleProcess('pivot')}
@@ -162,12 +291,25 @@ const DataEnginePage = () => {
             {/* Sample Data */}
             <Card>
               <CardHeader>
-                <CardTitle>Sample Input Data</CardTitle>
-                <CardDescription>5 rows × 4 columns (scaled to millions in production)</CardDescription>
+                <CardTitle>{uploadedData ? 'Uploaded CSV Data' : 'Sample Input Data'}</CardTitle>
+                <CardDescription>
+                  {uploadedData 
+                    ? `File size: ${uploadedData.size} bytes (processed in Web Worker)`
+                    : '5 rows × 4 columns (scaled to millions in production)'
+                  }
+                </CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="code-block overflow-x-auto">
-                  <pre className="text-xs">{JSON.stringify(sampleData, null, 2)}</pre>
+                  {uploadedData ? (
+                    <pre className="text-xs">
+                      {`Data processed in Web Worker:
+Size: ${uploadedData.size} bytes
+Result: ${uploadedData.result}`}
+                    </pre>
+                  ) : (
+                    <pre className="text-xs">{JSON.stringify(sampleData, null, 2)}</pre>
+                  )}
                 </div>
               </CardContent>
             </Card>
