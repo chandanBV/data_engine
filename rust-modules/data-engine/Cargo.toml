@@ -13,7 +13,7 @@ serde_json = { workspace = true }
 serde-wasm-bindgen = { workspace = true }
 js-sys = { workspace = true }
 web-sys = { workspace = true }
-arrow = { version = "57.0.0", features = ["csv", "json"] }
+arrow = { version = "57.0.0", features = ["csv", "json", "ipc"] }
 getrandom = { version = "0.3", features = ["wasm_js"] }
 arrow-json = "57.0.0"
 

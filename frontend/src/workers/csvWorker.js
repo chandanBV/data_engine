@@ -40,6 +40,8 @@ self.onmessage = async (e) => {
           // Process CSV through WASM
           console.log("Engine", engine)
           const result = await engine.load_data_from_csv(uint8Array);
+          const schema = engine.get_schema();
+        console.log("🚀 ~ schema:", schema)
           const endTime = performance.now();
 
           console.log(`✅ Worker ${workerId}: CSV processing completed in ${(endTime - startTime).toFixed(2)}ms`);

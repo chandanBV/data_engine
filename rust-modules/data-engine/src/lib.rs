@@ -8,14 +8,21 @@
 use wasm_bindgen::prelude::*;
 
 // Declare modules
+pub mod aggregation;
+pub mod convertor;
 pub mod data;
 pub mod engine;
+pub mod filter;
+pub mod logs;
+
 #[cfg(test)]
 pub mod tests;
 
 // Re-export public API
-pub use data::{recordbatch_to_json, AggregateResult, DataRow};
+// pub use data;
 pub use engine::DataEngine;
+pub use logs::rust_logger;
+pub use logs::web_logger;
 
 // When the `wee_alloc` feature is enabled, use `wee_alloc` as the global allocator
 #[cfg(feature = "wee_alloc")]

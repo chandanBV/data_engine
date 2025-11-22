@@ -22,7 +22,7 @@ const DataEnginePage = () => {
 
   useEffect(() => {
     // Initialize web worker
-    activeWorkers++;
+    activeWorkers += 1;
     console.log(`🚀 Creating web worker #${activeWorkers} (Total active: ${activeWorkers})`);
 
     const csvWorker = new Worker(new URL('../workers/csvWorker.js', import.meta.url), {
@@ -45,6 +45,7 @@ const DataEnginePage = () => {
           console.log("Worker Result: ", result);
           console.log("Data Engine: ", result);
           toast.success(`CSV file uploaded and processed successfully! Loaded ${dataSize} bytes`);
+
           break;
         case 'ERROR':
           setUploadStatus('error');
@@ -67,7 +68,7 @@ const DataEnginePage = () => {
 
     // Cleanup
     return () => {
-      activeWorkers--;
+      activeWorkers -= 1;
       console.log(`🛑 Terminating web worker (Total active: ${activeWorkers})`);
       csvWorker.terminate();
     };
