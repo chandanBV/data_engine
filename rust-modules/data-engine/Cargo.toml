@@ -16,6 +16,11 @@ web-sys = { workspace = true }
 arrow = { version = "57.0.0", features = ["csv", "json", "ipc"] }
 getrandom = { version = "0.3", features = ["wasm_js"] }
 arrow-json = "57.0.0"
+console_error_panic_hook = { version = "0.1", optional = true }
+wee_alloc = { version = "0.4", optional = true }
+
+[features]
+default = ["console_error_panic_hook", "wee_alloc"]
 
 # Optional dependencies for advanced features
 # arrow = "48.0"  # For Arrow format support

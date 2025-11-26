@@ -9,11 +9,13 @@ use wasm_bindgen::prelude::*;
 
 // Declare modules
 pub mod aggregation;
+pub mod config;
 pub mod convertor;
 pub mod data;
 pub mod engine;
 pub mod filter;
 pub mod logs;
+pub mod pivot;
 
 #[cfg(test)]
 pub mod tests;

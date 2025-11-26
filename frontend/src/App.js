@@ -7,6 +7,8 @@ import { ThemeProvider } from './components/theme-provider';
 // Pages
 import HomePage from './pages/HomePage';
 import DataEnginePage from './pages/DataEnginePage';
+import EnhancedDataEnginePage from './pages/EnhancedDataEnginePage';
+import WasmTestPage from './pages/WasmTestPage';
 import ChartRendererPage from './pages/ChartRendererPage';
 import QueryOptimizerPage from './pages/QueryOptimizerPage';
 import ParallelComputePage from './pages/ParallelComputePage';
@@ -18,7 +20,9 @@ function App() {
         <div className="App min-h-screen">
           <Routes>
             <Route path="/" element={<HomePage />} />
-            <Route path="/data-engine" element={<DataEnginePage />} />
+            <Route path="/data-engine" element={<EnhancedDataEnginePage />} />
+            <Route path="/data-engine-legacy" element={<DataEnginePage />} />
+            <Route path="/wasm-test" element={<WasmTestPage />} />
             <Route path="/chart-renderer" element={<ChartRendererPage />} />
             <Route path="/query-optimizer" element={<QueryOptimizerPage />} />
             <Route path="/parallel-compute" element={<ParallelComputePage />} />

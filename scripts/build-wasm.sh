@@ -43,8 +43,8 @@ for module in "${MODULES[@]}"; do
     
     cd "$RUST_DIR/$module"
     
-    # Build with wasm-pack
-    wasm-pack build --target web --out-dir "$FRONTEND_WASM_DIR/$module"
+    # Build with wasm-pack using bundler target to avoid require issues
+    wasm-pack build --target bundler --out-dir "$FRONTEND_WASM_DIR/$module"
     
     echo -e "${GREEN}✓ $module built successfully${NC}"
 done

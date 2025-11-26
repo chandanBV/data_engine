@@ -1,5 +1,5 @@
 // csvWorker.js - Web Worker for CSV processing
-import initSync, { DataEngine } from '../wasm/data-engine/data_engine.js';
+// Use centralized WASM loader to avoid webpack conflicts
 
 let dataEngine = null;
 let workerId = Math.random().toString(36).substr(2, 9); // Unique worker ID
@@ -9,8 +9,11 @@ console.log(`👷 Worker ${workerId} started`);
 const initWasm = async () => {
   if (!dataEngine) {
     console.log(`🔧 Worker ${workerId}: Initializing WASM...`);
-    await initSync();
-    dataEngine = new DataEngine();
+    
+    // Use centralized WASM loader
+    const { createDataEngine } = await import('../utils/wasmLoader.js');
+    dataEngine = await createDataEngine();
+    
     console.log(`✅ Worker ${workerId}: DataEngine initialized`);
   }
   return dataEngine;

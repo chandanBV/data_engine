@@ -68,6 +68,30 @@ const webpackConfig = {
         webpackConfig.plugins.push(healthPluginInstance);
       }
 
+      // WASM support configuration
+      webpackConfig.experiments = {
+        ...webpackConfig.experiments,
+        asyncWebAssembly: true,
+        syncWebAssembly: true,
+      };
+
+      // Fix for WASM modules that might include Node.js require calls
+      webpackConfig.resolve = {
+        ...webpackConfig.resolve,
+        fallback: {
+          ...webpackConfig.resolve?.fallback,
+          "fs": false,
+          "path": false,
+          "crypto": false,
+        },
+      };
+
+      // Add rule for WASM files
+      webpackConfig.module.rules.push({
+        test: /\.wasm$/,
+        type: "webassembly/async",
+      });
+
       return webpackConfig;
     },
   },
