@@ -1,181 +1,239 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
+import { Input } from './ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
-import { ScrollArea } from './ui/scroll-area';
-import { Download, Eye, Code, BarChart3 } from 'lucide-react';
+import { Download, Eye, ChevronLeft, ChevronRight, Filter, Search } from 'lucide-react';
 import { toast } from 'sonner';
 
-const ResultViewer = ({ result, dataEngine, showPagination = false, initialView = 'table' }) => {
-  const [viewMode, setViewMode] = useState(initialView);
-  const [jsonData, setJsonData] = useState(null);
+const ResultViewer = ({ result, dataEngine, showPagination = false, initialView = 'table', onReset = null }) => {
+  const [tableData, setTableData] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [columnFilters, setColumnFilters] = useState({});
+  const [selectedDataTypes, setSelectedDataTypes] = useState({});
+  const [totalRows, setTotalRows] = useState(0);
 
-  const processedData = useMemo(() => {
-    if (!result) return null;
-    
-    // Handle different result structures
-    const data = result.data || result;
-    if (!data) return null;
-
-    try {
-      // If data is Arrow IPC buffer, we need to convert it
-      if (data instanceof Uint8Array) {
-        // For now, show raw buffer info
-        return {
-          type: 'binary',
-          size: data.length,
-          preview: Array.from(data.slice(0, 20)).map(b => b.toString(16).padStart(2, '0')).join(' ')
-        };
-      }
-
-      // If it's already JSON
-      if (typeof data === 'string') {
-        try {
-          const parsed = JSON.parse(data);
-          return {
-            type: 'json',
-            data: parsed,
-            size: data.length
-          };
-        } catch {
-          return {
-            type: 'text',
-            data: data,
-            size: data.length
-          };
-        }
-      }
-
-      return {
-        type: 'object',
-        data: data,
-        size: JSON.stringify(data).length
-      };
-    } catch (error) {
-      console.error('Error processing result data:', error);
-      return null;
-    }
-  }, [result]);
-
-  const handleGetJsonData = async () => {
-    if (!dataEngine) {
-      toast.error('Data engine not available');
-      return;
-    }
-
-    try {
-      const jsonResult = await dataEngine.get_data_json();
-      const parsed = JSON.parse(jsonResult);
-      setJsonData(parsed);
-      toast.success('Data converted to JSON successfully');
-    } catch (error) {
-      console.error('Error getting JSON data:', error);
-      toast.error('Failed to convert data to JSON');
-    }
-  };
-
-  const handleExportArrow = async () => {
-    if (!dataEngine) {
-      toast.error('Data engine not available');
-      return;
-    }
-
-    try {
-      const arrowBuffer = await dataEngine.export_arrow();
+  // Auto-fetch JSON data when result changes
+  useEffect(() => {
+    const fetchData = async () => {
+      if (!dataEngine) return;
+      if (!result) return; // No data to display
       
-      // Create blob and download
-      const blob = new Blob([arrowBuffer], { type: 'application/octet-stream' });
+      setIsLoading(true);
+      try {
+        let parsed;
+        
+        console.log('ResultViewer - Processing result:', result);
+        
+        // Check if this is a processing result (pivot/aggregate/filter)
+        if (result.type && result.data) {
+          console.log('ResultViewer - Processing result type:', result.type);
+          
+          // Check if data is Arrow IPC buffer (Uint8Array)
+          if (result.data instanceof Uint8Array) {
+            console.log('ResultViewer - Data is Arrow IPC buffer, need to convert to JSON');
+            // For now, we need to get JSON from the engine after the operation
+            // The operations should have updated the engine's data
+            const count = await dataEngine.get_row_count();
+            setTotalRows(count);
+            const limit = Math.min(count, 10000);
+            const jsonResult = await dataEngine.get_data_json_limit(limit);
+            parsed = JSON.parse(jsonResult);
+            console.log('ResultViewer - Converted Arrow to JSON:', parsed);
+          } else if (typeof result.data === 'string') {
+            // Data is already JSON string
+            parsed = JSON.parse(result.data);
+            console.log('ResultViewer - Parsed JSON string:', parsed);
+          } else {
+            // Data is already a JavaScript object
+            parsed = result.data;
+            console.log('ResultViewer - Using data object directly:', parsed);
+          }
+        } else if (result.data) {
+          // This is raw uploaded data with { data: ... } structure
+          console.log('ResultViewer - Raw uploaded data');
+          const count = await dataEngine.get_row_count();
+          setTotalRows(count);
+          
+          // Load max 10,000 rows to prevent browser crash
+          const limit = Math.min(count, 10000);
+          const jsonResult = await dataEngine.get_data_json_limit(limit);
+          parsed = JSON.parse(jsonResult);
+          
+          if (count > 10000) {
+            toast.info(`Loaded first ${limit.toLocaleString()} of ${count.toLocaleString()} rows for performance`);
+          }
+        } else {
+          console.error('ResultViewer - Invalid result structure:', result);
+          return;
+        }
+        
+        setTableData(parsed);
+        setCurrentPage(1); // Reset to first page on new data
+      } catch (error) {
+        console.error('Error fetching data:', error);
+        toast.error('Failed to load data');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchData();
+  }, [result, dataEngine]);
+
+  // Detect column data types
+  const columnTypes = useMemo(() => {
+    if (!tableData || !Array.isArray(tableData) || tableData.length === 0) return {};
+    
+    const types = {};
+    const firstRow = tableData[0];
+    
+    Object.keys(firstRow).forEach(column => {
+      const sampleValues = tableData.slice(0, 100).map(row => row[column]).filter(v => v !== null && v !== undefined);
+      
+      if (sampleValues.length === 0) {
+        types[column] = 'null';
+      } else if (sampleValues.every(v => typeof v === 'number')) {
+        types[column] = Number.isInteger(sampleValues[0]) ? 'integer' : 'float';
+      } else if (sampleValues.every(v => typeof v === 'boolean')) {
+        types[column] = 'boolean';
+      } else if (sampleValues.every(v => !isNaN(Date.parse(v)))) {
+        types[column] = 'date';
+      } else {
+        types[column] = 'string';
+      }
+    });
+    
+    return types;
+  }, [tableData]);
+
+  // Filter data based on search and column filters
+  const filteredData = useMemo(() => {
+    if (!tableData || !Array.isArray(tableData)) return [];
+    
+    let filtered = tableData;
+    
+    // Apply search filter
+    if (searchTerm) {
+      filtered = filtered.filter(row => 
+        Object.values(row).some(value => 
+          String(value).toLowerCase().includes(searchTerm.toLowerCase())
+        )
+      );
+    }
+    
+    // Apply column filters
+    Object.entries(columnFilters).forEach(([column, filterValue]) => {
+      if (filterValue) {
+        filtered = filtered.filter(row => 
+          String(row[column]).toLowerCase().includes(filterValue.toLowerCase())
+        );
+      }
+    });
+    
+    // Apply data type filters
+    Object.entries(selectedDataTypes).forEach(([column, dataType]) => {
+      if (dataType && dataType !== 'all') {
+        filtered = filtered.filter(row => {
+          const value = row[column];
+          if (value === null || value === undefined) return dataType === 'null';
+          
+          switch (dataType) {
+            case 'integer':
+            case 'float':
+              return typeof value === 'number';
+            case 'string':
+              return typeof value === 'string';
+            case 'boolean':
+              return typeof value === 'boolean';
+            case 'date':
+              return !isNaN(Date.parse(value));
+            default:
+              return true;
+          }
+        });
+      }
+    });
+    
+    return filtered;
+  }, [tableData, searchTerm, columnFilters, selectedDataTypes]);
+
+  // Paginate data
+  const paginatedData = useMemo(() => {
+    if (!showPagination) return filteredData;
+    
+    const startIndex = (currentPage - 1) * pageSize;
+    const endIndex = startIndex + pageSize;
+    return filteredData.slice(startIndex, endIndex);
+  }, [filteredData, currentPage, pageSize, showPagination]);
+
+  const totalPages = Math.ceil(filteredData.length / pageSize);
+
+  const handleExportCSV = () => {
+    if (!tableData || tableData.length === 0) {
+      toast.error('No data to export');
+      return;
+    }
+
+    try {
+      const columns = Object.keys(tableData[0]);
+      const csv = [
+        columns.join(','),
+        ...tableData.map(row => 
+          columns.map(col => {
+            const value = row[col];
+            if (value === null || value === undefined) return '';
+            const stringValue = String(value);
+            return stringValue.includes(',') ? `"${stringValue}"` : stringValue;
+          }).join(',')
+        )
+      ].join('\n');
+
+      const blob = new Blob([csv], { type: 'text/csv' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `data_export_${Date.now()}.arrow`;
+      a.download = `data_export_${Date.now()}.csv`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
       
-      toast.success('Arrow data exported successfully');
+      toast.success('CSV exported successfully');
     } catch (error) {
-      console.error('Error exporting Arrow data:', error);
-      toast.error('Failed to export Arrow data');
+      console.error('Error exporting CSV:', error);
+      toast.error('Failed to export CSV');
     }
   };
 
-  const renderTableView = (data) => {
-    if (!data || !Array.isArray(data) || data.length === 0) {
-      return <p className="text-muted-foreground">No tabular data to display</p>;
+  const handleExportJSON = () => {
+    if (!tableData || tableData.length === 0) {
+      toast.error('No data to export');
+      return;
     }
 
-    const columns = Object.keys(data[0]);
-    const maxRows = 100; // Limit for performance
-    const displayData = data.slice(0, maxRows);
-
-    return (
-      <div className="space-y-4">
-        {data.length > maxRows && (
-          <Badge variant="outline">
-            Showing {maxRows} of {data.length} rows
-          </Badge>
-        )}
-        <ScrollArea className="h-96 w-full border rounded">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                {columns.map(column => (
-                  <TableHead key={column} className="font-semibold">
-                    {column}
-                  </TableHead>
-                ))}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {displayData.map((row, index) => (
-                <TableRow key={index}>
-                  {columns.map(column => (
-                    <TableCell key={column} className="font-mono text-sm">
-                      {row[column] !== null && row[column] !== undefined 
-                        ? String(row[column]) 
-                        : <span className="text-muted-foreground">null</span>
-                      }
-                    </TableCell>
-                  ))}
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </ScrollArea>
-      </div>
-    );
-  };
-
-  const renderJsonView = (data) => {
-    return (
-      <ScrollArea className="h-96 w-full">
-        <pre className="text-xs font-mono p-4 bg-muted/50 rounded">
-          {JSON.stringify(data, null, 2)}
-        </pre>
-      </ScrollArea>
-    );
-  };
-
-  const renderBinaryView = (data) => {
-    return (
-      <div className="space-y-4">
-        <div className="flex items-center gap-4">
-          <Badge variant="outline">Binary Data</Badge>
-          <Badge variant="secondary">{data.size} bytes</Badge>
-        </div>
-        <div className="p-4 bg-muted/50 rounded font-mono text-xs">
-          <p className="mb-2 text-muted-foreground">First 20 bytes (hex):</p>
-          <p>{data.preview}...</p>
-        </div>
-        <p className="text-sm text-muted-foreground">
-          This is Arrow IPC binary data. Use the export function to download or convert to JSON to view the contents.
-        </p>
-      </div>
-    );
+    try {
+      const json = JSON.stringify(tableData, null, 2);
+      const blob = new Blob([json], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `data_export_${Date.now()}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      
+      toast.success('JSON exported successfully');
+    } catch (error) {
+      console.error('Error exporting JSON:', error);
+      toast.error('Failed to export JSON');
+    }
   };
 
   if (!result) {
@@ -184,119 +242,212 @@ const ResultViewer = ({ result, dataEngine, showPagination = false, initialView 
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Eye className="h-5 w-5 text-muted-foreground" />
-            Results
+            Data Viewer
           </CardTitle>
-          <CardDescription>Process data to see results here</CardDescription>
+          <CardDescription>Upload a file to view data</CardDescription>
         </CardHeader>
         <CardContent>
-          <p className="text-muted-foreground">No results to display</p>
+          <p className="text-muted-foreground">No data loaded</p>
         </CardContent>
       </Card>
     );
   }
 
+  if (isLoading) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Eye className="h-5 w-5 text-primary" />
+            Data Viewer
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-center py-8">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+            <p className="ml-3 text-muted-foreground">Loading data...</p>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (!tableData || !Array.isArray(tableData) || tableData.length === 0) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Eye className="h-5 w-5 text-muted-foreground" />
+            Data Viewer
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-muted-foreground">No data available</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const columns = Object.keys(tableData[0]);
+
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <BarChart3 className="h-5 w-5 text-primary" />
-          Processing Results
-        </CardTitle>
-        <CardDescription>
-          {result.type ? `${result.type.charAt(0).toUpperCase() + result.type.slice(1)} operation results` : 'Data results'}
-          {processedData && ` • ${processedData.size} ${processedData.type === 'binary' ? 'bytes' : 'characters'}`}
-        </CardDescription>
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle className="flex items-center gap-2">
+              <Eye className="h-5 w-5 text-primary" />
+              {result && result.type ? (
+                <>
+                  {result.type === 'pivot' && 'Pivot Table Results'}
+                  {result.type === 'aggregate' && 'Aggregation Results'}
+                  {result.type === 'filter' && 'Filtered Data'}
+                </>
+              ) : (
+                'Data Viewer'
+              )}
+            </CardTitle>
+            <CardDescription>
+              {filteredData.length.toLocaleString()} {filteredData.length === 1 ? 'row' : 'rows'}
+              {filteredData.length !== tableData.length && ` (filtered from ${tableData.length.toLocaleString()})`}
+              {totalRows > tableData.length && ` • Showing first ${tableData.length.toLocaleString()} of ${totalRows.toLocaleString()} total`}
+              {' • '}{columns.length} columns
+            </CardDescription>
+          </div>
+          <div className="flex gap-2">
+            {onReset && (
+              <Button
+                variant="default"
+                size="sm"
+                onClick={onReset}
+              >
+                Reset to Original Data
+              </Button>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleExportCSV}
+            >
+              <Download className="h-4 w-4 mr-2" />
+              CSV
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleExportJSON}
+            >
+              <Download className="h-4 w-4 mr-2" />
+              JSON
+            </Button>
+          </div>
+        </div>
       </CardHeader>
       <CardContent>
         <div className="space-y-4">
-          {/* Action buttons */}
-          <div className="flex gap-2 flex-wrap">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleGetJsonData}
-              disabled={!dataEngine}
-            >
-              <Code className="h-4 w-4 mr-2" />
-              Get JSON
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleExportArrow}
-              disabled={!dataEngine}
-            >
-              <Download className="h-4 w-4 mr-2" />
-              Export Arrow
-            </Button>
+          {/* Search and filters */}
+          <div className="flex gap-2 items-center">
+            <div className="relative flex-1">
+              <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search across all columns..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-8"
+              />
+            </div>
+            {showPagination && (
+              <Select value={String(pageSize)} onValueChange={(v) => setPageSize(Number(v))}>
+                <SelectTrigger className="w-32">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="25">25 rows</SelectItem>
+                  <SelectItem value="50">50 rows</SelectItem>
+                  <SelectItem value="100">100 rows</SelectItem>
+                  <SelectItem value="200">200 rows</SelectItem>
+                </SelectContent>
+              </Select>
+            )}
           </div>
 
-          {/* Configuration display */}
-          {result.config && (
-            <div className="p-3 bg-muted/50 rounded">
-              <p className="text-sm font-medium mb-2">Configuration:</p>
-              <pre className="text-xs font-mono">
-                {JSON.stringify(result.config, null, 2)}
-              </pre>
+          {/* Table with horizontal scroll */}
+          <div className="border rounded-lg overflow-hidden">
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    {columns.map(column => (
+                      <TableHead key={column} className="min-w-[150px]">
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold">{column}</span>
+                          <Badge variant="secondary" className="text-xs">
+                            {columnTypes[column]}
+                          </Badge>
+                        </div>
+                      </TableHead>
+                    ))}
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {paginatedData.map((row, index) => (
+                    <TableRow key={index}>
+                      {columns.map(column => {
+                        const value = row[column];
+                        const type = columnTypes[column];
+                        
+                        return (
+                          <TableCell key={column} className="font-mono text-sm">
+                            {value !== null && value !== undefined ? (
+                              <span className={
+                                type === 'integer' || type === 'float' ? 'text-blue-600' :
+                                type === 'boolean' ? 'text-purple-600' :
+                                type === 'date' ? 'text-green-600' :
+                                ''
+                              }>
+                                {String(value)}
+                              </span>
+                            ) : (
+                              <span className="text-muted-foreground italic">null</span>
+                            )}
+                          </TableCell>
+                        );
+                      })}
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </div>
+
+          {/* Pagination */}
+          {showPagination && totalPages > 1 && (
+            <div className="flex items-center justify-between">
+              <div className="text-sm text-muted-foreground">
+                Page {currentPage} of {totalPages}
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                  Previous
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages}
+                >
+                  Next
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
           )}
-
-          {/* Data display */}
-          <Tabs value={viewMode} onValueChange={setViewMode}>
-            <TabsList>
-              <TabsTrigger value="table">Table View</TabsTrigger>
-              <TabsTrigger value="json">JSON View</TabsTrigger>
-              <TabsTrigger value="raw">Raw Data</TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="table" className="mt-4">
-              {jsonData ? (
-                renderTableView(jsonData)
-              ) : processedData?.type === 'json' && Array.isArray(processedData.data) ? (
-                renderTableView(processedData.data)
-              ) : (
-                <div className="space-y-2">
-                  <p className="text-muted-foreground">
-                    Table view not available for this data type. 
-                    {processedData?.type === 'binary' && ' Click "Get JSON" to convert the data first.'}
-                  </p>
-                  {processedData?.type === 'binary' && renderBinaryView(processedData)}
-                </div>
-              )}
-            </TabsContent>
-
-            <TabsContent value="json" className="mt-4">
-              {jsonData ? (
-                renderJsonView(jsonData)
-              ) : processedData?.type === 'json' ? (
-                renderJsonView(processedData.data)
-              ) : processedData?.type === 'object' ? (
-                renderJsonView(processedData.data)
-              ) : (
-                <div className="space-y-2">
-                  <p className="text-muted-foreground">
-                    JSON view not available for this data type.
-                    {processedData?.type === 'binary' && ' Click "Get JSON" to convert the data first.'}
-                  </p>
-                  {processedData?.type === 'binary' && renderBinaryView(processedData)}
-                </div>
-              )}
-            </TabsContent>
-
-            <TabsContent value="raw" className="mt-4">
-              {processedData?.type === 'binary' ? (
-                renderBinaryView(processedData)
-              ) : processedData?.type === 'text' ? (
-                <ScrollArea className="h-96 w-full">
-                  <pre className="text-xs font-mono p-4 bg-muted/50 rounded">
-                    {processedData.data}
-                  </pre>
-                </ScrollArea>
-              ) : (
-                renderJsonView(processedData?.data || result.data)
-              )}
-            </TabsContent>
-          </Tabs>
         </div>
       </CardContent>
     </Card>

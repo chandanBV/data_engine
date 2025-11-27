@@ -105,9 +105,31 @@ impl DataEngine {
         DataEngine::new()
     }
 
+    /// Save current data as original (for reset functionality)
+    pub fn save_original(&mut self) {
+        if let Some(data) = self.data.get("data") {
+            self.data.insert("original".to_string(), data.clone());
+        }
+    }
+
+    /// Restore original data (for reset functionality)
+    pub fn restore_original(&mut self) -> Result<(), String> {
+        if let Some(original) = self.data.get("original") {
+            self.data.insert("data".to_string(), original.clone());
+            Ok(())
+        } else {
+            Err("No original data to restore".to_string())
+        }
+    }
+
     /// Load CSV data from bytes
     pub fn load_csv(&mut self, bytes: &[u8]) -> Result<JsValue, JsValue> {
-        self.load_data_from_csv(bytes)
+        let result = self.load_data_from_csv(bytes);
+        // Save original data after loading
+        if result.is_ok() {
+            self.save_original();
+        }
+        result
     }
 
     /// Load JSON data from string
@@ -121,6 +143,8 @@ impl DataEngine {
                 #[cfg(target_arch = "wasm32")]
                 logger("JSON upload successful");
                 rust_logger("JSON upload successful");
+                // Save original data after loading
+                self.save_original();
                 Ok(JsValue::from_str("JSON upload successful"))
             }
             Err(e) => {
@@ -145,7 +169,8 @@ impl DataEngine {
         let pivot_engine = PivotEngine::new(data);
         match pivot_engine.execute(&config) {
             Ok(result_batches) => {
-                self.store_data(Some("pivot_result"), result_batches.clone());
+                // Store in main "data" key so get_data_json can retrieve it
+                self.store_data(None, result_batches.clone());
                 let ipc_data = batches_to_ipc(&result_batches);
                 Ok(JsValue::from(ipc_data))
             }
@@ -165,7 +190,8 @@ impl DataEngine {
         let agg_engine = AggregationEngine::new(data);
         match agg_engine.execute(&config) {
             Ok(result_batches) => {
-                self.store_data(Some("aggregate_result"), result_batches.clone());
+                // Store in main "data" key so get_data_json can retrieve it
+                self.store_data(None, result_batches.clone());
                 let ipc_data = batches_to_ipc(&result_batches);
                 Ok(JsValue::from(ipc_data))
             }
@@ -185,7 +211,8 @@ impl DataEngine {
         let filter_engine = FilterEngine::new(data);
         match filter_engine.execute(&config) {
             Ok(result_batches) => {
-                self.store_data(Some("filter_result"), result_batches.clone());
+                // Store in main "data" key so get_data_json can retrieve it
+                self.store_data(None, result_batches.clone());
                 let ipc_data = batches_to_ipc(&result_batches);
                 Ok(JsValue::from(ipc_data))
             }
@@ -198,8 +225,21 @@ impl DataEngine {
         self.get_data_ipc()
     }
 
-    /// Get data as JSON (for small datasets)
+    /// Get data as JSON (supports all batches and data types)
+    /// Returns first 100 rows by default for performance
     pub fn get_data_json(&self) -> Result<JsValue, JsValue> {
+        self.get_data_json_limit(100)
+    }
+
+    /// Get total row count across all batches
+    pub fn get_row_count(&self) -> usize {
+        self.data.get("data")
+            .map(|batches| batches.iter().map(|b| b.num_rows()).sum())
+            .unwrap_or(0)
+    }
+
+    /// Get data as JSON with custom row limit
+    pub fn get_data_json_limit(&self, limit: usize) -> Result<JsValue, JsValue> {
         let data = self.data.get("data")
             .ok_or_else(|| JsValue::from_str("No data available"))?;
         
@@ -207,43 +247,150 @@ impl DataEngine {
             return Ok(JsValue::from_str("[]"));
         }
 
-        // Convert first batch to JSON for demonstration
-        // In production, you'd want to handle multiple batches and size limits
-        let batch = &data[0];
+        // Process batches up to the limit
         let mut json_rows = Vec::new();
+        let mut rows_processed = 0;
         
-        for row_idx in 0..batch.num_rows() {
-            let mut row_obj = serde_json::Map::new();
-            
-            for (col_idx, field) in batch.schema().fields().iter().enumerate() {
-                let column = batch.column(col_idx);
-                let field_name = field.name();
+        'outer: for batch in data.iter() {
+            for row_idx in 0..batch.num_rows() {
+                if rows_processed >= limit {
+                    break 'outer;
+                }
+                let mut row_obj = serde_json::Map::new();
                 
-                // Simple value extraction - extend for more data types
-                let value = match column.data_type() {
-                    arrow::datatypes::DataType::Utf8 => {
-                        let string_array = column.as_any().downcast_ref::<arrow::array::StringArray>().unwrap();
-                        if string_array.is_null(row_idx) {
-                            serde_json::Value::Null
-                        } else {
-                            serde_json::Value::String(string_array.value(row_idx).to_string())
+                for (col_idx, field) in batch.schema().fields().iter().enumerate() {
+                    let column = batch.column(col_idx);
+                    let field_name = field.name();
+                    
+                    // Handle all Arrow data types
+                    let value = match column.data_type() {
+                        arrow::datatypes::DataType::Utf8 => {
+                            let string_array = column.as_any().downcast_ref::<arrow::array::StringArray>().unwrap();
+                            if string_array.is_null(row_idx) {
+                                serde_json::Value::Null
+                            } else {
+                                serde_json::Value::String(string_array.value(row_idx).to_string())
+                            }
                         }
-                    }
-                    arrow::datatypes::DataType::Float64 => {
-                        let float_array = column.as_any().downcast_ref::<arrow::array::Float64Array>().unwrap();
-                        if float_array.is_null(row_idx) {
-                            serde_json::Value::Null
-                        } else {
-                            serde_json::Value::Number(serde_json::Number::from_f64(float_array.value(row_idx)).unwrap_or(serde_json::Number::from(0)))
+                        arrow::datatypes::DataType::LargeUtf8 => {
+                            let string_array = column.as_any().downcast_ref::<arrow::array::LargeStringArray>().unwrap();
+                            if string_array.is_null(row_idx) {
+                                serde_json::Value::Null
+                            } else {
+                                serde_json::Value::String(string_array.value(row_idx).to_string())
+                            }
                         }
-                    }
-                    _ => serde_json::Value::String(format!("unsupported_type_{}", row_idx))
-                };
+                        arrow::datatypes::DataType::Int8 => {
+                            let int_array = column.as_any().downcast_ref::<arrow::array::Int8Array>().unwrap();
+                            if int_array.is_null(row_idx) {
+                                serde_json::Value::Null
+                            } else {
+                                serde_json::Value::Number(serde_json::Number::from(int_array.value(row_idx)))
+                            }
+                        }
+                        arrow::datatypes::DataType::Int16 => {
+                            let int_array = column.as_any().downcast_ref::<arrow::array::Int16Array>().unwrap();
+                            if int_array.is_null(row_idx) {
+                                serde_json::Value::Null
+                            } else {
+                                serde_json::Value::Number(serde_json::Number::from(int_array.value(row_idx)))
+                            }
+                        }
+                        arrow::datatypes::DataType::Int32 => {
+                            let int_array = column.as_any().downcast_ref::<arrow::array::Int32Array>().unwrap();
+                            if int_array.is_null(row_idx) {
+                                serde_json::Value::Null
+                            } else {
+                                serde_json::Value::Number(serde_json::Number::from(int_array.value(row_idx)))
+                            }
+                        }
+                        arrow::datatypes::DataType::Int64 => {
+                            let int_array = column.as_any().downcast_ref::<arrow::array::Int64Array>().unwrap();
+                            if int_array.is_null(row_idx) {
+                                serde_json::Value::Null
+                            } else {
+                                serde_json::Value::Number(serde_json::Number::from(int_array.value(row_idx)))
+                            }
+                        }
+                        arrow::datatypes::DataType::UInt8 => {
+                            let int_array = column.as_any().downcast_ref::<arrow::array::UInt8Array>().unwrap();
+                            if int_array.is_null(row_idx) {
+                                serde_json::Value::Null
+                            } else {
+                                serde_json::Value::Number(serde_json::Number::from(int_array.value(row_idx)))
+                            }
+                        }
+                        arrow::datatypes::DataType::UInt16 => {
+                            let int_array = column.as_any().downcast_ref::<arrow::array::UInt16Array>().unwrap();
+                            if int_array.is_null(row_idx) {
+                                serde_json::Value::Null
+                            } else {
+                                serde_json::Value::Number(serde_json::Number::from(int_array.value(row_idx)))
+                            }
+                        }
+                        arrow::datatypes::DataType::UInt32 => {
+                            let int_array = column.as_any().downcast_ref::<arrow::array::UInt32Array>().unwrap();
+                            if int_array.is_null(row_idx) {
+                                serde_json::Value::Null
+                            } else {
+                                serde_json::Value::Number(serde_json::Number::from(int_array.value(row_idx)))
+                            }
+                        }
+                        arrow::datatypes::DataType::UInt64 => {
+                            let int_array = column.as_any().downcast_ref::<arrow::array::UInt64Array>().unwrap();
+                            if int_array.is_null(row_idx) {
+                                serde_json::Value::Null
+                            } else {
+                                serde_json::Value::Number(serde_json::Number::from(int_array.value(row_idx)))
+                            }
+                        }
+                        arrow::datatypes::DataType::Float32 => {
+                            let float_array = column.as_any().downcast_ref::<arrow::array::Float32Array>().unwrap();
+                            if float_array.is_null(row_idx) {
+                                serde_json::Value::Null
+                            } else {
+                                serde_json::Value::Number(serde_json::Number::from_f64(float_array.value(row_idx) as f64).unwrap_or(serde_json::Number::from(0)))
+                            }
+                        }
+                        arrow::datatypes::DataType::Float64 => {
+                            let float_array = column.as_any().downcast_ref::<arrow::array::Float64Array>().unwrap();
+                            if float_array.is_null(row_idx) {
+                                serde_json::Value::Null
+                            } else {
+                                serde_json::Value::Number(serde_json::Number::from_f64(float_array.value(row_idx)).unwrap_or(serde_json::Number::from(0)))
+                            }
+                        }
+                        arrow::datatypes::DataType::Boolean => {
+                            let bool_array = column.as_any().downcast_ref::<arrow::array::BooleanArray>().unwrap();
+                            if bool_array.is_null(row_idx) {
+                                serde_json::Value::Null
+                            } else {
+                                serde_json::Value::Bool(bool_array.value(row_idx))
+                            }
+                        }
+                        arrow::datatypes::DataType::Date32 | arrow::datatypes::DataType::Date64 => {
+                            // Convert dates to string representation
+                            serde_json::Value::String(format!("{:?}", column))
+                        }
+                        arrow::datatypes::DataType::Timestamp(_, _) => {
+                            // Convert timestamps to string representation
+                            serde_json::Value::String(format!("{:?}", column))
+                        }
+                        arrow::datatypes::DataType::Null => {
+                            serde_json::Value::Null
+                        }
+                        _ => {
+                            // For unsupported types, convert to string representation
+                            serde_json::Value::String(format!("{:?}", column))
+                        }
+                    };
+                    
+                    row_obj.insert(field_name.clone(), value);
+                }
                 
-                row_obj.insert(field_name.clone(), value);
+                json_rows.push(serde_json::Value::Object(row_obj));
+                rows_processed += 1;
             }
-            
-            json_rows.push(serde_json::Value::Object(row_obj));
         }
         
         let json_result = serde_json::Value::Array(json_rows);
@@ -317,9 +464,30 @@ impl WasmDataEngine {
         self.engine.export_arrow()
     }
 
-    /// Get data as JSON (for small datasets)
+    /// Get data as JSON (returns first 100 rows by default)
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
     pub fn get_data_json(&self) -> Result<JsValue, JsValue> {
         self.engine.get_data_json()
+    }
+
+    /// Get data as JSON with custom row limit
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
+    pub fn get_data_json_limit(&self, limit: usize) -> Result<JsValue, JsValue> {
+        self.engine.get_data_json_limit(limit)
+    }
+
+    /// Get total row count
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
+    pub fn get_row_count(&self) -> usize {
+        self.engine.get_row_count()
+    }
+
+    /// Restore original data (for reset functionality)
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
+    pub fn restore_original(&mut self) -> Result<JsValue, JsValue> {
+        match self.engine.restore_original() {
+            Ok(_) => Ok(JsValue::from_str("Original data restored")),
+            Err(e) => Err(JsValue::from_str(&e))
+        }
     }
 }

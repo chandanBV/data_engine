@@ -92,6 +92,13 @@ const webpackConfig = {
         type: "webassembly/async",
       });
 
+      // Ensure WASM directory is not ignored by webpack
+      webpackConfig.module.rules.push({
+        test: /\.js$/,
+        include: path.resolve(__dirname, 'src/wasm'),
+        type: 'javascript/auto',
+      });
+
       return webpackConfig;
     },
   },

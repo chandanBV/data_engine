@@ -47,6 +47,23 @@ const EnhancedDataEnginePage = () => {
     setProcessingResult(result);
   };
 
+  const handleReset = async () => {
+    if (!dataEngine) {
+      setProcessingResult(null);
+      return;
+    }
+
+    try {
+      // Use efficient restore_original method instead of reloading file
+      await dataEngine.restore_original();
+      setProcessingResult(null);
+      toast.success('Reset to original data');
+    } catch (error) {
+      console.error('Error resetting data:', error);
+      toast.error('Failed to reset data');
+    }
+  };
+
   if (!isInitialized) {
     return (
       <div className="min-h-screen bg-background">
@@ -121,6 +138,7 @@ const EnhancedDataEnginePage = () => {
                 dataEngine={dataEngine}
                 showPagination={true}
                 initialView="table"
+                onReset={processingResult ? handleReset : null}
               />
             </div>
 
