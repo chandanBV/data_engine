@@ -53,7 +53,8 @@ impl<'a> PivotEngine<'a> {
         // 2. Create columns for each unique combination of column fields
         // 3. Aggregate values according to the aggregation type
         
-        let mut grouped_data: HashMap<String, HashMap<String, f64>> = HashMap::new();
+        // Changed to support multiple value fields: row_key -> (col_key, value_field) -> value
+        let mut grouped_data: HashMap<String, HashMap<(String, String), f64>> = HashMap::new();
         let num_rows = batch.num_rows();
 
         // Extract row keys, column keys, and values
@@ -78,18 +79,19 @@ impl<'a> PivotEngine<'a> {
                 col_key.push_str(&val);
             }
 
-            // Extract value from first value field (simplified)
-            if !config.value_fields.is_empty() {
-                let value_column = batch.column_by_name(&config.value_fields[0]).unwrap();
+            // Extract values from all value fields
+            for value_field in &config.value_fields {
+                let value_column = batch.column_by_name(value_field).unwrap();
                 value = self.extract_numeric_value(value_column, row_idx);
+                
+                // Store in grouped data structure with composite key (col_key, value_field)
+                let composite_key = (col_key.clone(), value_field.clone());
+                grouped_data.entry(row_key.clone())
+                    .or_insert_with(HashMap::new)
+                    .entry(composite_key)
+                    .and_modify(|v| *v += value)
+                    .or_insert(value);
             }
-
-            // Store in grouped data structure
-            grouped_data.entry(row_key)
-                .or_insert_with(HashMap::new)
-                .entry(col_key)
-                .and_modify(|v| *v += value)
-                .or_insert(value);
         }
 
         // Convert grouped data back to RecordBatch
@@ -126,35 +128,40 @@ impl<'a> PivotEngine<'a> {
 
     fn grouped_data_to_batch(
         &self,
-        grouped_data: HashMap<String, HashMap<String, f64>>,
+        grouped_data: HashMap<String, HashMap<(String, String), f64>>,
         config: &PivotConfig,
     ) -> Result<RecordBatch, String> {
-        // Collect all unique column keys
-        let mut all_col_keys: std::collections::HashSet<String> = std::collections::HashSet::new();
+        // Collect all unique composite keys (col_key, value_field)
+        let mut all_composite_keys: std::collections::HashSet<(String, String)> = std::collections::HashSet::new();
         for row_data in grouped_data.values() {
-            for col_key in row_data.keys() {
-                all_col_keys.insert(col_key.clone());
+            for composite_key in row_data.keys() {
+                all_composite_keys.insert(composite_key.clone());
             }
         }
-        let mut col_keys: Vec<String> = all_col_keys.into_iter().collect();
-        col_keys.sort();
+        let mut composite_keys: Vec<(String, String)> = all_composite_keys.into_iter().collect();
+        composite_keys.sort();
 
-        // Create schema
+        // Create schema with column names like "col_key_value_field" or just "col_key" if single value field
         let mut fields = vec![Field::new("row_key", DataType::Utf8, false)];
-        for col_key in &col_keys {
-            fields.push(Field::new(col_key, DataType::Float64, true));
+        for (col_key, value_field) in &composite_keys {
+            let column_name = if config.value_fields.len() > 1 {
+                format!("{}_{}", col_key, value_field)
+            } else {
+                col_key.clone()
+            };
+            fields.push(Field::new(&column_name, DataType::Float64, true));
         }
         let schema = Arc::new(Schema::new(fields));
 
         // Create arrays
         let mut row_keys = Vec::new();
-        let mut column_data: Vec<Vec<Option<f64>>> = vec![Vec::new(); col_keys.len()];
+        let mut column_data: Vec<Vec<Option<f64>>> = vec![Vec::new(); composite_keys.len()];
 
         for (row_key, row_data) in grouped_data {
             row_keys.push(Some(row_key));
             
-            for (col_idx, col_key) in col_keys.iter().enumerate() {
-                let value = row_data.get(col_key).copied();
+            for (col_idx, composite_key) in composite_keys.iter().enumerate() {
+                let value = row_data.get(composite_key).copied();
                 column_data[col_idx].push(value);
             }
         }

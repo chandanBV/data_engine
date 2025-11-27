@@ -99,6 +99,13 @@ const ProcessingControls = ({ dataEngine, onResult, schema, compact = false }) =
 
     setIsProcessing(true);
     try {
+      // Reset to original data first to ensure correct schema
+      try {
+        await dataEngine.restore_original();
+      } catch (resetError) {
+        console.warn('Could not reset to original data:', resetError);
+      }
+
       // Create pivot configuration
       const config = {
         row_fields: pivotConfig.rowFields,
@@ -136,6 +143,13 @@ const ProcessingControls = ({ dataEngine, onResult, schema, compact = false }) =
 
     setIsProcessing(true);
     try {
+      // Reset to original data first to ensure correct schema
+      try {
+        await dataEngine.restore_original();
+      } catch (resetError) {
+        console.warn('Could not reset to original data:', resetError);
+      }
+
       const config = {
         group_by_fields: aggregateConfig.groupByFields,
         aggregations: aggregateConfig.aggregations
@@ -170,6 +184,13 @@ const ProcessingControls = ({ dataEngine, onResult, schema, compact = false }) =
 
     setIsProcessing(true);
     try {
+      // Reset to original data first to ensure correct schema
+      try {
+        await dataEngine.restore_original();
+      } catch (resetError) {
+        console.warn('Could not reset to original data:', resetError);
+      }
+
       const result = await dataEngine.filter(JSON.stringify(filterConfig));
       onResult({
         type: 'filter',

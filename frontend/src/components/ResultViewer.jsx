@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
 import { Download, Eye, ChevronLeft, ChevronRight, Filter, Search } from 'lucide-react';
 import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
 
 const ResultViewer = ({ result, dataEngine, showPagination = false, initialView = 'table', onReset = null }) => {
   const [tableData, setTableData] = useState(null);
@@ -288,7 +289,11 @@ const ResultViewer = ({ result, dataEngine, showPagination = false, initialView 
     );
   }
 
-  const columns = Object.keys(tableData[0]);
+  // Reorder columns to put row_key first if it exists
+  const allColumns = Object.keys(tableData[0]);
+  const columns = allColumns.includes('row_key') 
+    ? ['row_key', ...allColumns.filter(col => col !== 'row_key')]
+    : allColumns;
 
   return (
     <Card>
@@ -371,50 +376,69 @@ const ResultViewer = ({ result, dataEngine, showPagination = false, initialView 
             )}
           </div>
 
-          {/* Table with horizontal scroll */}
-          <div className="border rounded-lg overflow-hidden">
-            <div className="overflow-x-auto">
+          {/* Table with horizontal scroll - Excel-like design */}
+          <div className="border-2 border-slate-300 dark:border-slate-600 rounded-lg overflow-hidden shadow-sm">
+            <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
               <Table>
                 <TableHeader>
-                  <TableRow>
+                  <TableRow className="bg-slate-100 dark:bg-slate-800">
+                    {/* Row number column header */}
+                    <TableHead className="w-16 text-center font-bold bg-slate-200 dark:bg-slate-700 sticky left-0 z-20">
+                      #
+                    </TableHead>
                     {columns.map(column => (
-                      <TableHead key={column} className="min-w-[150px]">
-                        <div className="flex items-center gap-2">
-                          <span className="font-semibold">{column}</span>
-                          <Badge variant="secondary" className="text-xs">
-                            {columnTypes[column]}
-                          </Badge>
-                        </div>
+                      <TableHead 
+                        key={column} 
+                        className={cn(
+                          "min-w-[150px]",
+                          column === 'row_key' && "bg-blue-100 dark:bg-blue-900 font-bold sticky left-16 z-20"
+                        )}
+                      >
+                        <span className="font-semibold">{column}</span>
                       </TableHead>
                     ))}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {paginatedData.map((row, index) => (
-                    <TableRow key={index}>
-                      {columns.map(column => {
-                        const value = row[column];
-                        const type = columnTypes[column];
-                        
-                        return (
-                          <TableCell key={column} className="font-mono text-sm">
-                            {value !== null && value !== undefined ? (
-                              <span className={
-                                type === 'integer' || type === 'float' ? 'text-blue-600' :
-                                type === 'boolean' ? 'text-purple-600' :
-                                type === 'date' ? 'text-green-600' :
-                                ''
-                              }>
-                                {String(value)}
-                              </span>
-                            ) : (
-                              <span className="text-muted-foreground italic">null</span>
-                            )}
-                          </TableCell>
-                        );
-                      })}
-                    </TableRow>
-                  ))}
+                  {paginatedData.map((row, index) => {
+                    const actualRowNumber = showPagination ? (currentPage - 1) * pageSize + index + 1 : index + 1;
+                    return (
+                      <TableRow key={index} className="hover:bg-blue-50 dark:hover:bg-slate-800">
+                        {/* Row number column */}
+                        <TableCell className="w-16 text-center font-semibold text-slate-500 bg-slate-50 dark:bg-slate-900 sticky left-0 z-10 border-r-2 border-slate-300 dark:border-slate-600">
+                          {actualRowNumber}
+                        </TableCell>
+                        {columns.map(column => {
+                          const value = row[column];
+                          const type = columnTypes[column];
+                          
+                          return (
+                            <TableCell 
+                              key={column} 
+                              className={cn(
+                                "font-mono text-sm",
+                                column === 'row_key' && "bg-blue-50 dark:bg-blue-950 font-semibold sticky left-16 z-10 border-r-2 border-blue-300 dark:border-blue-700"
+                              )}
+                            >
+                              {value !== null && value !== undefined ? (
+                                <span className={
+                                  column === 'row_key' ? 'text-blue-700 dark:text-blue-300 font-bold' :
+                                  type === 'integer' || type === 'float' ? 'text-blue-600 dark:text-blue-400' :
+                                  type === 'boolean' ? 'text-purple-600 dark:text-purple-400' :
+                                  type === 'date' ? 'text-green-600 dark:text-green-400' :
+                                  'text-slate-700 dark:text-slate-300'
+                                }>
+                                  {String(value)}
+                                </span>
+                              ) : (
+                                <span className="text-slate-400 dark:text-slate-500 italic">null</span>
+                              )}
+                            </TableCell>
+                          );
+                        })}
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             </div>
