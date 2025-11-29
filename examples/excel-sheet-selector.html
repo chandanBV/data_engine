@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Excel Sheet Selector - WASM Data Engine</title>
+    <style>
+      body {
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        max-width: 900px;
+        margin: 50px auto;
+        padding: 20px;
+        background: #f5f5f5;
+      }
+      .container {
+        background: white;
+        padding: 30px;
+        border-radius: 8px;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+      }
+      h1 {
+        color: #333;
+        margin-bottom: 10px;
+      }
+      .subtitle {
+        color: #666;
+        margin-bottom: 30px;
+      }
+      .upload-section {
+        margin-bottom: 30px;
+        padding: 20px;
+        border: 2px dashed #ddd;
+        border-radius: 8px;
+        text-align: center;
+      }
+      .file-input {
+        display: none;
+      }
+      .upload-btn {
+        background: #007bff;
+        color: white;
+        padding: 12px 24px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 16px;
+        transition: background 0.3s;
+      }
+      .upload-btn:hover {
+        background: #0056b3;
+      }
+      .sheet-selector {
+        margin: 20px 0;
+        display: none;
+      }
+      .sheet-selector.active {
+        display: block;
+      }
+      label {
+        display: block;
+        margin-bottom: 8px;
+        font-weight: 600;
+        color: #333;
+      }
+      select {
+        width: 100%;
+        padding: 10px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        font-size: 14px;
+        margin-bottom: 15px;
+      }
+      .load-btn {
+        background: #28a745;
+        color: white;
+        padding: 10px 20px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 14px;
+        transition: background 0.3s;
+      }
+      .load-btn:hover {
+        background: #218838;
+      }
+      .load-btn:disabled {
+        background: #ccc;
+        cursor: not-allowed;
+      }
+      .data-preview {
+        margin-top: 30px;
+        display: none;
+      }
+      .data-preview.active {
+        display: block;
+      }
+      .data-preview h3 {
+        color: #333;
+        margin-bottom: 15px;
+      }
+      .stats {
+        display: flex;
+        gap: 20px;
+        margin-bottom: 20px;
+      }
+      .stat-card {
+        flex: 1;
+        padding: 15px;
+        background: #f8f9fa;
+        border-radius: 4px;
+        border-left: 4px solid #007bff;
+      }
+      .stat-label {
+        font-size: 12px;
+        color: #666;
+        text-transform: uppercase;
+      }
+      .stat-value {
+        font-size: 24px;
+        font-weight: bold;
+        color: #333;
+        margin-top: 5px;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 15px;
+      }
+      th,
+      td {
+        padding: 12px;
+        text-align: left;
+        border-bottom: 1px solid #ddd;
+      }
+      th {
+        background: #f8f9fa;
+        font-weight: 600;
+        color: #333;
+      }
+      tr:hover {
+        background: #f8f9fa;
+      }
+      .message {
+        padding: 12px;
+        border-radius: 4px;
+        margin: 15px 0;
+      }
+      .message.success {
+        background: #d4edda;
+        color: #155724;
+        border: 1px solid #c3e6cb;
+      }
+      .message.error {
+        background: #f8d7da;
+        color: #721c24;
+        border: 1px solid #f5c6cb;
+      }
+      .loading {
+        display: none;
+        text-align: center;
+        padding: 20px;
+      }
+      .loading.active {
+        display: block;
+      }
+      .spinner {
+        border: 4px solid #f3f3f3;
+        border-top: 4px solid #007bff;
+        border-radius: 50%;
+        width: 40px;
+        height: 40px;
+        animation: spin 1s linear infinite;
+        margin: 0 auto;
+      }
+      @keyframes spin {
+        0% {
+          transform: rotate(0deg);
+        }
+        100% {
+          transform: rotate(360deg);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>📊 Excel Sheet Selector</h1>
+      <p class="subtitle">
+        Upload an Excel file and select which sheet to load
+      </p>
+
+      <div class="upload-section">
+        <input
+          type="file"
+          id="fileInput"
+          class="file-input"
+          accept=".xlsx,.xls"
+        />
+        <button
+          class="upload-btn"
+          onclick="document.getElementById('fileInput').click()"
+        >
+          📁 Choose Excel File
+        </button>
+        <p id="fileName" style="margin-top: 10px; color: #666"></p>
+      </div>
+
+      <div id="sheetSelector" class="sheet-selector">
+        <label for="sheetSelect">Select Sheet:</label>
+        <select id="sheetSelect"></select>
+        <button class="load-btn" onclick="loadSelectedSheet()">
+          Load Sheet
+        </button>
+      </div>
+
+      <div id="loading" class="loading">
+        <div class="spinner"></div>
+        <p>Processing...</p>
+      </div>
+
+      <div id="message"></div>
+
+      <div id="dataPreview" class="data-preview">
+        <h3>Data Preview</h3>
+        <div class="stats">
+          <div class="stat-card">
+            <div class="stat-label">Total Rows</div>
+            <div class="stat-value" id="rowCount">0</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Columns</div>
+            <div class="stat-value" id="colCount">0</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Sheet Name</div>
+            <div class="stat-value" id="sheetName">-</div>
+          </div>
+        </div>
+        <div style="overflow-x: auto">
+          <table id="dataTable"></table>
+        </div>
+      </div>
+    </div>
+
+    <script type="module">
+      import init, { WasmDataEngine } from "../pkg/data_engine.js";
+
+      let engine;
+      let excelBytes;
+
+      async function initWasm() {
+        try {
+          await init();
+          engine = new WasmDataEngine();
+          console.log("WASM Data Engine initialized");
+        } catch (error) {
+          showMessage("Failed to initialize WASM engine: " + error, "error");
+        }
+      }
+
+      function showMessage(text, type = "success") {
+        const messageDiv = document.getElementById("message");
+        messageDiv.className = `message ${type}`;
+        messageDiv.textContent = text;
+        setTimeout(() => {
+          messageDiv.className = "message";
+          messageDiv.textContent = "";
+        }, 5000);
+      }
+
+      function showLoading(show) {
+        document.getElementById("loading").className = show
+          ? "loading active"
+          : "loading";
+      }
+
+      async function handleFileUpload(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        document.getElementById(
+          "fileName"
+        ).textContent = `Selected: ${file.name}`;
+        showLoading(true);
+
+        try {
+          const arrayBuffer = await file.arrayBuffer();
+          excelBytes = new Uint8Array(arrayBuffer);
+
+          // Get sheet names
+          const sheetsJson = engine.get_excel_sheets(excelBytes);
+          const sheets = JSON.parse(sheetsJson);
+
+          // Populate sheet selector
+          const select = document.getElementById("sheetSelect");
+          select.innerHTML = "";
+          sheets.forEach((sheet) => {
+            const option = document.createElement("option");
+            option.value = sheet;
+            option.textContent = sheet;
+            select.appendChild(option);
+          });
+
+          document.getElementById("sheetSelector").className =
+            "sheet-selector active";
+          showMessage(
+            `Found ${sheets.length} sheet(s) in the Excel file`,
+            "success"
+          );
+        } catch (error) {
+          showMessage("Error reading Excel file: " + error, "error");
+        } finally {
+          showLoading(false);
+        }
+      }
+
+      window.loadSelectedSheet = async function () {
+        const selectedSheet = document.getElementById("sheetSelect").value;
+        if (!selectedSheet || !excelBytes) return;
+
+        showLoading(true);
+        document.getElementById("dataPreview").className = "data-preview";
+
+        try {
+          // Load the selected sheet
+          const result = engine.load_excel_sheet(excelBytes, selectedSheet);
+          console.log(result);
+
+          // Get data
+          const dataJson = engine.get_data_json();
+          const data = JSON.parse(dataJson);
+
+          // Update stats
+          document.getElementById("rowCount").textContent = data.length;
+          document.getElementById("colCount").textContent =
+            data.length > 0 ? Object.keys(data[0]).length : 0;
+          document.getElementById("sheetName").textContent = selectedSheet;
+
+          // Display data in table
+          displayDataTable(data);
+
+          document.getElementById("dataPreview").className =
+            "data-preview active";
+          showMessage(`Successfully loaded sheet: ${selectedSheet}`, "success");
+        } catch (error) {
+          showMessage("Error loading sheet: " + error, "error");
+        } finally {
+          showLoading(false);
+        }
+      };
+
+      function displayDataTable(data) {
+        const table = document.getElementById("dataTable");
+        table.innerHTML = "";
+
+        if (data.length === 0) {
+          table.innerHTML = "<tr><td>No data available</td></tr>";
+          return;
+        }
+
+        // Create header
+        const thead = document.createElement("thead");
+        const headerRow = document.createElement("tr");
+        Object.keys(data[0]).forEach((key) => {
+          const th = document.createElement("th");
+          th.textContent = key;
+          headerRow.appendChild(th);
+        });
+        thead.appendChild(headerRow);
+        table.appendChild(thead);
+
+        // Create body (show first 10 rows)
+        const tbody = document.createElement("tbody");
+        data.slice(0, 10).forEach((row) => {
+          const tr = document.createElement("tr");
+          Object.values(row).forEach((value) => {
+            const td = document.createElement("td");
+            td.textContent = value !== null ? value : "-";
+            tr.appendChild(td);
+          });
+          tbody.appendChild(tr);
+        });
+        table.appendChild(tbody);
+
+        if (data.length > 10) {
+          const tfoot = document.createElement("tfoot");
+          const footerRow = document.createElement("tr");
+          const td = document.createElement("td");
+          td.colSpan = Object.keys(data[0]).length;
+          td.textContent = `Showing 10 of ${data.length} rows`;
+          td.style.textAlign = "center";
+          td.style.fontStyle = "italic";
+          td.style.color = "#666";
+          footerRow.appendChild(td);
+          tfoot.appendChild(footerRow);
+          table.appendChild(tfoot);
+        }
+      }
+
+      // Initialize on page load
+      initWasm();
+
+      // Set up file input listener
+      document
+        .getElementById("fileInput")
+        .addEventListener("change", handleFileUpload);
+    </script>
+  </body>
+</html>
