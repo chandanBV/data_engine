@@ -1,5 +1,5 @@
 use crate::engine::DataEngine;
-use arrow::json::reader::ReaderBuilder;
+use arrow::json::reader::{ReaderBuilder, infer_json_schema};
 use arrow::record_batch::RecordBatch;
 use std::io::Cursor;
 use std::sync::Arc;
@@ -19,12 +19,23 @@ pub fn json_to_batches(
         _ => return Err("JSON must be an object or array of objects".into()),
     };
 
-    // Convert back to JSON string for Arrow processing
-    let json_string = serde_json::to_string(&json_array)?;
-    let cursor = Cursor::new(json_string.as_bytes());
-
-    // Use Arrow's JSON reader to infer schema and create batches
-    let mut reader = ReaderBuilder::new(Arc::new(arrow::datatypes::Schema::empty()))
+    // Convert to newline-delimited JSON (NDJSON) format for Arrow
+    // Arrow's JSON reader expects one JSON object per line, not an array
+    let ndjson_string = json_array.iter()
+        .map(|obj| serde_json::to_string(obj))
+        .collect::<Result<Vec<String>, _>>()?
+        .join("\n");
+    
+    println!("Rust: Converted {} records to NDJSON format", json_array.len());
+    
+    // Infer schema from NDJSON data
+    let (schema, _) = infer_json_schema(&mut Cursor::new(ndjson_string.as_bytes()), Some(100))?;
+    println!("Rust: Inferred schema: {:?}", schema);
+    
+    // Create reader with inferred schema
+    let cursor = Cursor::new(ndjson_string.as_bytes());
+    let reader = ReaderBuilder::new(Arc::new(schema))
+        .with_batch_size(8192)
         .build(cursor)?;
 
     println!("Rust: Starting JSON batch processing...");
@@ -47,10 +58,22 @@ pub fn json_array_to_batches(
 ) -> Result<(), Box<dyn std::error::Error>> {
     println!("Rust: Processing JSON array with {} items", json_array.len());
 
-    let json_string = serde_json::to_string(&json_array)?;
-    let cursor = Cursor::new(json_string.as_bytes());
-
-    let mut reader = ReaderBuilder::new(Arc::new(arrow::datatypes::Schema::empty()))
+    // Convert to newline-delimited JSON (NDJSON) format for Arrow
+    let ndjson_string = json_array.iter()
+        .map(|obj| serde_json::to_string(obj))
+        .collect::<Result<Vec<String>, _>>()?
+        .join("\n");
+    
+    println!("Rust: Converted {} records to NDJSON format", json_array.len());
+    
+    // Infer schema from NDJSON data
+    let (schema, _) = infer_json_schema(&mut Cursor::new(ndjson_string.as_bytes()), Some(100))?;
+    println!("Rust: Inferred schema: {:?}", schema);
+    
+    // Create reader with inferred schema
+    let cursor = Cursor::new(ndjson_string.as_bytes());
+    let reader = ReaderBuilder::new(Arc::new(schema))
+        .with_batch_size(8192)
         .build(cursor)?;
 
     let mut batches: Vec<RecordBatch> = Vec::new();

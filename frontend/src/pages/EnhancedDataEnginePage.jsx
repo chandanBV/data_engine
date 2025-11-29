@@ -148,7 +148,7 @@ const EnhancedDataEnginePage = () => {
               </div>
 
               <ResultViewer
-                result={processingResult || { data: uploadedData.result }}
+                result={processingResult || { data: "loaded" }}
                 dataEngine={dataEngine}
                 showPagination={true}
                 initialView="table"
