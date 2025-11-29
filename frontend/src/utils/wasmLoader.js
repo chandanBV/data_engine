@@ -17,16 +17,16 @@ export const loadWasmModule = async () => {
   // Create new loading promise
   initPromise = (async () => {
     try {
-      console.log('🔄 Loading WASM module...');
-      
+      console.log("🔄 Loading WASM module...");
+
       // Dynamic import to avoid webpack conflicts
-      const module = await import('../wasm/data-engine/data_engine.js');
-      console.log('📦 WASM module structure:', Object.keys(module));
-      
+      const module = await import("../wasm/data-engine/data_engine.js");
+      console.log("📦 WASM module structure:", Object.keys(module));
+
       // Handle different export structures for different targets
       let initSync, WasmDataEngine;
-      
-      if (module.default && typeof module.default === 'function') {
+
+      if (module.default && typeof module.default === "function") {
         // Web target: default export is init function
         initSync = module.default;
         WasmDataEngine = module.WasmDataEngine;
@@ -36,53 +36,91 @@ export const loadWasmModule = async () => {
         WasmDataEngine = module.default.WasmDataEngine;
       } else {
         // Node.js target: named exports
-        initSync = module.default || module.init || module.__wbg_init || module.init_panic_hook;
+        initSync =
+          module.default ||
+          module.init ||
+          module.__wbg_init ||
+          module.init_panic_hook;
         WasmDataEngine = module.WasmDataEngine;
       }
-      
-      console.log('🔧 Extracted:', { initSync: typeof initSync, WasmDataEngine: typeof WasmDataEngine });
-      
-      if (!WasmDataEngine || typeof WasmDataEngine !== 'function') {
-        throw new Error(`WasmDataEngine not found. Available exports: ${Object.keys(module).join(', ')}`);
+
+      console.log("🔧 Extracted:", {
+        initSync: typeof initSync,
+        WasmDataEngine: typeof WasmDataEngine,
+      });
+
+      if (!WasmDataEngine || typeof WasmDataEngine !== "function") {
+        throw new Error(
+          `WasmDataEngine not found. Available exports: ${Object.keys(
+            module
+          ).join(", ")}`
+        );
       }
-      
+
       // Initialize WASM (some targets may not need explicit initialization)
-      if (initSync && typeof initSync === 'function') {
-        console.log('🔧 Calling init function...');
+      if (initSync && typeof initSync === "function") {
+        console.log("🔧 Calling init function...");
         await initSync();
       } else {
-        console.log('🔧 No init function found, assuming auto-initialization...');
+        console.log(
+          "🔧 No init function found, assuming auto-initialization..."
+        );
         // Node.js target might auto-initialize, just set up panic hook if available
-        if (module.init_panic_hook && typeof module.init_panic_hook === 'function') {
+        if (
+          module.init_panic_hook &&
+          typeof module.init_panic_hook === "function"
+        ) {
           module.init_panic_hook();
         }
       }
-      
+
       // Test the WasmDataEngine to make sure it works
-      console.log('🧪 Testing WasmDataEngine...');
+      console.log("🧪 Testing WasmDataEngine...");
       const testEngine = new WasmDataEngine();
-      console.log('🧪 Test engine created:', testEngine);
-      
+      console.log("🧪 Test engine created:", testEngine);
+      console.log("🧪 Test engine methods:", Object.keys(testEngine));
+
+      // Check for required methods
+      const requiredMethods = [
+        "load_csv",
+        "load_json",
+        "load_parquet",
+        "load_excel",
+        "get_schema",
+        "pivot",
+        "filter",
+        "aggregate",
+      ];
+      console.log("🧪 Checking required methods:");
+      requiredMethods.forEach((method) => {
+        const exists = typeof testEngine[method] === "function";
+        console.log(
+          `  ${exists ? "✅" : "❌"} ${method}: ${typeof testEngine[method]}`
+        );
+      });
+
       // Test basic methods
       try {
         const testSchema = await testEngine.get_schema();
-        console.log('🧪 Test schema call result:', testSchema);
+        console.log("🧪 Test schema call result:", testSchema);
       } catch (error) {
-        console.warn('🧪 Test schema call failed (expected for empty engine):', error.message);
+        console.warn(
+          "🧪 Test schema call failed (expected for empty engine):",
+          error.message
+        );
       }
-      
+
       // Cache the module
       wasmModule = {
         initSync,
         WasmDataEngine,
-        createEngine: () => new WasmDataEngine()
+        createEngine: () => new WasmDataEngine(),
       };
-      
-      console.log('✅ WASM module loaded and cached');
+
+      console.log("✅ WASM module loaded and cached");
       return wasmModule;
-      
     } catch (error) {
-      console.error('❌ Failed to load WASM module:', error);
+      console.error("❌ Failed to load WASM module:", error);
       // Reset promise so we can retry
       initPromise = null;
       throw error;
