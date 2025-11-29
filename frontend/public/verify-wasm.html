@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>WASM Module Verification</title>
+    <style>
+      body {
+        font-family: monospace;
+        padding: 20px;
+        background: #1e1e1e;
+        color: #d4d4d4;
+      }
+      .success {
+        color: #4ec9b0;
+      }
+      .error {
+        color: #f48771;
+      }
+      .info {
+        color: #569cd6;
+      }
+      pre {
+        background: #252526;
+        padding: 10px;
+        border-radius: 4px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>WASM Data Engine Verification</h1>
+    <div id="output"></div>
+
+    <script type="module">
+      const output = document.getElementById("output");
+
+      function log(message, type = "info") {
+        const div = document.createElement("div");
+        div.className = type;
+        div.textContent = message;
+        output.appendChild(div);
+      }
+
+      async function verify() {
+        try {
+          log("Loading WASM module...", "info");
+
+          // Import the WASM module
+          const wasmModule = await import(
+            "../src/wasm/data-engine/data_engine.js"
+          );
+          log("✓ WASM module loaded successfully", "success");
+
+          // Create engine instance
+          const engine = new wasmModule.WasmDataEngine();
+          log("✓ WasmDataEngine instance created", "success");
+
+          // Check for methods
+          const methods = [
+            "load_csv",
+            "load_json",
+            "load_parquet",
+            "load_excel",
+            "pivot",
+            "filter",
+            "aggregate",
+            "get_schema",
+            "get_data_json",
+            "restore_original",
+          ];
+
+          log("\nChecking methods:", "info");
+          let allPresent = true;
+
+          methods.forEach((method) => {
+            if (typeof engine[method] === "function") {
+              log(`  ✓ ${method}`, "success");
+            } else {
+              log(`  ✗ ${method} - MISSING!`, "error");
+              allPresent = false;
+            }
+          });
+
+          if (allPresent) {
+            log(
+              "\n✓ All methods present! WASM module is up to date.",
+              "success"
+            );
+          } else {
+            log(
+              "\n✗ Some methods are missing. Please hard refresh (Cmd+Shift+R)",
+              "error"
+            );
+          }
+
+          // Show WASM file timestamp
+          log("\nWASM Module Info:", "info");
+          log(
+            `  Build time: Check browser Network tab for data_engine_bg.wasm`,
+            "info"
+          );
+        } catch (error) {
+          log("✗ Error loading WASM module:", "error");
+          log(`  ${error.message}`, "error");
+          log("\nTroubleshooting:", "info");
+          log("  1. Make sure you ran: ./scripts/build-wasm.sh", "info");
+          log("  2. Hard refresh the browser (Cmd+Shift+R)", "info");
+          log("  3. Check browser console for detailed errors", "info");
+        }
+      }
+
+      verify();
+    </script>
+  </body>
+</html>

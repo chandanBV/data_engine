@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Test WASM Methods</title>
+    <style>
+      body {
+        font-family: monospace;
+        padding: 20px;
+        background: #1e1e1e;
+        color: #d4d4d4;
+      }
+      .success {
+        color: #4ec9b0;
+      }
+      .error {
+        color: #f48771;
+      }
+      pre {
+        background: #252526;
+        padding: 10px;
+        border-radius: 4px;
+        overflow-x: auto;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>WASM Methods Test</h1>
+    <div id="output"></div>
+
+    <script type="module">
+      const output = document.getElementById("output");
+
+      function log(message, isError = false) {
+        const div = document.createElement("div");
+        div.className = isError ? "error" : "success";
+        div.textContent = message;
+        output.appendChild(div);
+      }
+
+      async function testMethods() {
+        try {
+          log(
+            "Loading WASM module from: ../src/wasm/data-engine/data_engine.js"
+          );
+
+          const wasmModule = await import(
+            "../src/wasm/data-engine/data_engine.js"
+          );
+          log("✓ Module loaded");
+          log("Module exports: " + Object.keys(wasmModule).join(", "));
+
+          const engine = new wasmModule.WasmDataEngine();
+          log("✓ Engine created");
+
+          const methods = Object.getOwnPropertyNames(
+            Object.getPrototypeOf(engine)
+          );
+          log("\nAll methods on engine:");
+          methods.forEach((m) => log("  - " + m));
+
+          log("\nChecking specific methods:");
+          ["load_csv", "load_json", "load_parquet", "load_excel"].forEach(
+            (method) => {
+              const exists = typeof engine[method] === "function";
+              log(
+                `  ${exists ? "✓" : "✗"} ${method}: ${typeof engine[method]}`,
+                !exists
+              );
+            }
+          );
+
+          // Try calling load_json with invalid data to see error format
+          log("\nTesting error format with invalid JSON:");
+          try {
+            await engine.load_json("invalid json");
+          } catch (e) {
+            log("Error caught:");
+            log("  typeof error: " + typeof e);
+            log("  error.message: " + e?.message);
+            log("  String(error): " + String(e));
+            log("  JSON.stringify(error): " + JSON.stringify(e));
+          }
+        } catch (error) {
+          log("✗ Failed: " + error.message, true);
+          log("Full error: " + JSON.stringify(error, null, 2), true);
+        }
+      }
+
+      testMethods();
+    </script>
+  </body>
+</html>

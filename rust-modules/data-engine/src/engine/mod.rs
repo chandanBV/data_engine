@@ -3,6 +3,8 @@ use crate::config::{PivotConfig, AggregateConfig, FilterConfig};
 use crate::convertor::ipc::batches_to_ipc;
 use crate::data::csv_parser::csv_to_batches;
 use crate::data::json_parser::json_to_batches;
+use crate::data::parquet_parser::parquet_to_batches;
+use crate::data::excel_parser::{excel_to_batches, get_excel_sheet_names};
 use crate::filter::FilterEngine;
 use crate::pivot::PivotEngine;
 use crate::logs::rust_logger::log as rust_logger;
@@ -149,6 +151,89 @@ impl DataEngine {
             }
             Err(e) => {
                 let error_msg = format!("JSON loading failed: {}", e);
+                #[cfg(target_arch = "wasm32")]
+                logger(&error_msg);
+                rust_logger(&error_msg);
+                Err(JsValue::from_str(&error_msg))
+            }
+        }
+    }
+
+    /// Load Parquet data from bytes
+    pub fn load_parquet(&mut self, bytes: &[u8]) -> Result<JsValue, JsValue> {
+        #[cfg(target_arch = "wasm32")]
+        logger("Parquet loading started");
+        rust_logger("Parquet loading started");
+
+        match parquet_to_batches(self, bytes) {
+            Ok(_) => {
+                #[cfg(target_arch = "wasm32")]
+                logger("Parquet upload successful");
+                rust_logger("Parquet upload successful");
+                // Save original data after loading
+                self.save_original();
+                Ok(JsValue::from_str("Parquet upload successful"))
+            }
+            Err(e) => {
+                let error_msg = format!("Parquet loading failed: {}", e);
+                #[cfg(target_arch = "wasm32")]
+                logger(&error_msg);
+                rust_logger(&error_msg);
+                Err(JsValue::from_str(&error_msg))
+            }
+        }
+    }
+
+    /// Get list of sheet names from Excel file
+    pub fn get_excel_sheets(&self, bytes: &[u8]) -> Result<JsValue, JsValue> {
+        #[cfg(target_arch = "wasm32")]
+        logger("Getting Excel sheet names");
+        rust_logger("Getting Excel sheet names");
+
+        match get_excel_sheet_names(bytes) {
+            Ok(sheets) => {
+                match serde_json::to_string(&sheets) {
+                    Ok(json) => Ok(JsValue::from_str(&json)),
+                    Err(e) => Err(JsValue::from_str(&format!("Failed to serialize sheet names: {}", e)))
+                }
+            }
+            Err(e) => {
+                let error_msg = format!("Failed to get Excel sheets: {}", e);
+                #[cfg(target_arch = "wasm32")]
+                logger(&error_msg);
+                rust_logger(&error_msg);
+                Err(JsValue::from_str(&error_msg))
+            }
+        }
+    }
+
+    /// Load Excel data from bytes (supports .xlsx and .xls)
+    /// Loads the first sheet by default
+    pub fn load_excel(&mut self, bytes: &[u8]) -> Result<JsValue, JsValue> {
+        self.load_excel_sheet(bytes, None)
+    }
+
+    /// Load specific sheet from Excel data
+    pub fn load_excel_sheet(&mut self, bytes: &[u8], sheet_name: Option<&str>) -> Result<JsValue, JsValue> {
+        #[cfg(target_arch = "wasm32")]
+        logger("Excel loading started");
+        rust_logger("Excel loading started");
+
+        match excel_to_batches(self, bytes, sheet_name) {
+            Ok(_) => {
+                let msg = match sheet_name {
+                    Some(name) => format!("Excel sheet '{}' uploaded successfully", name),
+                    None => "Excel upload successful".to_string(),
+                };
+                #[cfg(target_arch = "wasm32")]
+                logger(&msg);
+                rust_logger(&msg);
+                // Save original data after loading
+                self.save_original();
+                Ok(JsValue::from_str(&msg))
+            }
+            Err(e) => {
+                let error_msg = format!("Excel loading failed: {}", e);
                 #[cfg(target_arch = "wasm32")]
                 logger(&error_msg);
                 rust_logger(&error_msg);
@@ -432,6 +517,30 @@ impl WasmDataEngine {
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
     pub fn load_json(&mut self, json_string: &str) -> Result<JsValue, JsValue> {
         self.engine.load_json(json_string)
+    }
+
+    /// Load Parquet data from bytes
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
+    pub fn load_parquet(&mut self, bytes: &[u8]) -> Result<JsValue, JsValue> {
+        self.engine.load_parquet(bytes)
+    }
+
+    /// Get list of sheet names from Excel file
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
+    pub fn get_excel_sheets(&self, bytes: &[u8]) -> Result<JsValue, JsValue> {
+        self.engine.get_excel_sheets(bytes)
+    }
+
+    /// Load Excel data from bytes (loads first sheet by default)
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
+    pub fn load_excel(&mut self, bytes: &[u8]) -> Result<JsValue, JsValue> {
+        self.engine.load_excel(bytes)
+    }
+
+    /// Load specific sheet from Excel file
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
+    pub fn load_excel_sheet(&mut self, bytes: &[u8], sheet_name: &str) -> Result<JsValue, JsValue> {
+        self.engine.load_excel_sheet(bytes, Some(sheet_name))
     }
 
     /// Get schema information
