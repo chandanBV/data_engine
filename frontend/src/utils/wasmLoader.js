@@ -19,8 +19,9 @@ export const loadWasmModule = async () => {
     try {
       console.log("🔄 Loading WASM module...");
 
-      // Dynamic import to avoid webpack conflicts
-      const module = await import("../wasm/data-engine/data_engine.js");
+      // Dynamic import - use the root wasm directory, not subdirectory
+      // wasm-pack outputs to wasm/ not wasm/data-engine/
+      const module = await import("../wasm/data_engine.js");
       console.log("📦 WASM module structure:", Object.keys(module));
 
       // Handle different export structures for different targets
@@ -83,6 +84,7 @@ export const loadWasmModule = async () => {
       // Check for required methods
       const requiredMethods = [
         "load_csv",
+        "load_csv_with_batch_size", // New optimized method
         "load_json",
         "load_parquet",
         "load_excel",

@@ -134,6 +134,32 @@ impl DataEngine {
         result
     }
 
+    /// Load CSV data with custom batch size for better performance
+    /// Returns total row count for progress tracking
+    pub fn load_csv_with_batch_size(&mut self, bytes: &[u8], batch_size: usize) -> Result<JsValue, JsValue> {
+        #[cfg(target_arch = "wasm32")]
+        logger(&format!("CSV loading started with batch size: {}", batch_size));
+        rust_logger(&format!("CSV loading started with batch size: {}", batch_size));
+
+        match crate::data::csv_parser::csv_to_batches_with_batch_size(self, bytes, batch_size) {
+            Ok(total_rows) => {
+                #[cfg(target_arch = "wasm32")]
+                logger(&format!("CSV upload successful ({} rows)", total_rows));
+                rust_logger(&format!("CSV upload successful ({} rows)", total_rows));
+                // Save original data after loading
+                self.save_original();
+                Ok(JsValue::from_str(&format!("{{\"status\":\"success\",\"rows\":{}}}", total_rows)))
+            }
+            Err(e) => {
+                let error_msg = format!("CSV loading failed: {}", e);
+                #[cfg(target_arch = "wasm32")]
+                logger(&error_msg);
+                rust_logger(&error_msg);
+                Err(JsValue::from_str(&error_msg))
+            }
+        }
+    }
+
     /// Load JSON data from string
     pub fn load_json(&mut self, json_string: &str) -> Result<JsValue, JsValue> {
         #[cfg(target_arch = "wasm32")]
@@ -511,6 +537,14 @@ impl WasmDataEngine {
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
     pub fn load_csv(&mut self, bytes: &[u8]) -> Result<JsValue, JsValue> {
         self.engine.load_csv(bytes)
+    }
+
+    /// Load CSV data with custom batch size for better performance
+    /// batch_size controls how many rows are processed at once (default: 8192)
+    /// Returns JSON with status and row count: {"status":"success","rows":12345}
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
+    pub fn load_csv_with_batch_size(&mut self, bytes: &[u8], batch_size: usize) -> Result<JsValue, JsValue> {
+        self.engine.load_csv_with_batch_size(bytes, batch_size)
     }
 
     /// Load JSON data from string
