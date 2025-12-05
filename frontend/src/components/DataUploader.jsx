@@ -156,12 +156,33 @@ const DataUploader = ({ onDataLoaded, dataEngine }) => {
         console.log("Processing CSV file...");
         const arrayBuffer = await file.arrayBuffer();
         const uint8Array = new Uint8Array(arrayBuffer);
-        console.log("CSV data prepared, size:", uint8Array.length);
-        console.log("Calling dataEngine.load_csv...");
-        result = await dataEngine.load_csv(uint8Array);
-        console.log("CSV load result:", result);
-
-        toast.success(`CSV file "${file.name}" loaded successfully!`);
+        const fileSizeMB = uint8Array.length / (1024 * 1024);
+        console.log("CSV data prepared, size:", fileSizeMB.toFixed(2), "MB");
+        
+        // Use optimized batch processing for files > 5MB
+        // 65K rows is optimal for 3M-20M record datasets
+        if (fileSizeMB > 5 && dataEngine.load_csv_with_batch_size) {
+          const batchSize = 65536; // 64K rows - optimal for large files
+          console.log(`Using optimized processing (batch: ${batchSize})`);
+          result = await dataEngine.load_csv_with_batch_size(uint8Array, batchSize);
+          
+          // Parse result for row count
+          try {
+            const resultData = JSON.parse(result);
+            if (resultData.rows) {
+              toast.success(`Loaded ${file.name} - ${resultData.rows.toLocaleString()} rows`);
+            } else {
+              toast.success(`CSV file "${file.name}" loaded successfully!`);
+            }
+          } catch (e) {
+            toast.success(`CSV file "${file.name}" loaded successfully!`);
+          }
+        } else {
+          // Use standard method for smaller files
+          console.log("Using standard processing");
+          result = await dataEngine.load_csv(uint8Array);
+          toast.success(`CSV file "${file.name}" loaded successfully!`);
+        }
       } else if (fileExtension === "json") {
         console.log("Processing JSON file...");
         const text = await file.text();
