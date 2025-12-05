@@ -1,8 +1,67 @@
 use crate::config::PivotConfig;
-use arrow::array::{Array, ArrayRef, Float64Array, StringArray, RecordBatch};
+use arrow::array::{Array, ArrayRef, Float64Array, RecordBatch, StringArray};
 use arrow::datatypes::{DataType, Field, Schema};
 use std::collections::HashMap;
 use std::sync::Arc;
+
+#[derive(Debug, Clone)]
+enum AggregationValue {
+    Count(u64),
+    Sum(f64),
+    Min(f64),
+    Max(f64),
+    SumCount(f64, u64), // For AVG: (sum, count)
+}
+
+impl AggregationValue {
+    fn new(agg_type: &str, value: f64) -> Self {
+        match agg_type {
+            "count" => AggregationValue::Count(1),
+            "sum" => AggregationValue::Sum(value),
+            "min" => AggregationValue::Min(value),
+            "max" => AggregationValue::Max(value),
+            "avg" => AggregationValue::SumCount(value, 1),
+            _ => AggregationValue::Sum(value), // Default to sum
+        }
+    }
+
+    fn update(&mut self, value: f64) {
+        match self {
+            AggregationValue::Count(ref mut count) => *count += 1,
+            AggregationValue::Sum(ref mut sum) => *sum += value,
+            AggregationValue::Min(ref mut min) => {
+                if value < *min {
+                    *min = value;
+                }
+            }
+            AggregationValue::Max(ref mut max) => {
+                if value > *max {
+                    *max = value;
+                }
+            }
+            AggregationValue::SumCount(ref mut sum, ref mut count) => {
+                *sum += value;
+                *count += 1;
+            }
+        }
+    }
+
+    fn finalize(&self) -> f64 {
+        match self {
+            AggregationValue::Count(count) => *count as f64,
+            AggregationValue::Sum(sum) => *sum,
+            AggregationValue::Min(min) => *min,
+            AggregationValue::Max(max) => *max,
+            AggregationValue::SumCount(sum, count) => {
+                if *count > 0 {
+                    *sum / *count as f64
+                } else {
+                    0.0
+                }
+            }
+        }
+    }
+}
 
 pub struct PivotEngine<'a> {
     pub data: &'a [RecordBatch],
@@ -46,26 +105,27 @@ impl<'a> PivotEngine<'a> {
         Ok(vec![pivoted_batch])
     }
 
-    fn create_pivot_table(&self, batch: &RecordBatch, config: &PivotConfig) -> Result<RecordBatch, String> {
-        // This is a simplified pivot implementation
-        // For a full implementation, you'd need to:
-        // 1. Group by row fields
-        // 2. Create columns for each unique combination of column fields
-        // 3. Aggregate values according to the aggregation type
-        
-        // Changed to support multiple value fields: row_key -> (col_key, value_field) -> value
-        let mut grouped_data: HashMap<String, HashMap<(String, String), f64>> = HashMap::new();
+    fn create_pivot_table(
+        &self,
+        batch: &RecordBatch,
+        config: &PivotConfig,
+    ) -> Result<RecordBatch, String> {
+        // Changed to support multiple value fields with different aggregation types
+        // Structure: HashMap<row_key, HashMap<(col_key, value_field), AggregationValue>>
+        let mut grouped_data: HashMap<String, HashMap<(String, String), AggregationValue>> =
+            HashMap::new();
         let num_rows = batch.num_rows();
 
         // Extract row keys, column keys, and values
         for row_idx in 0..num_rows {
             let mut row_key = String::new();
             let mut col_key = String::new();
-            let mut value = 0.0;
 
             // Build row key from row fields
             for (i, field) in config.row_fields.iter().enumerate() {
-                if i > 0 { row_key.push('|'); }
+                if i > 0 {
+                    row_key.push('|');
+                }
                 let column = batch.column_by_name(field).unwrap();
                 let val = self.extract_string_value(column, row_idx);
                 row_key.push_str(&val);
@@ -73,7 +133,9 @@ impl<'a> PivotEngine<'a> {
 
             // Build column key from column fields
             for (i, field) in config.column_fields.iter().enumerate() {
-                if i > 0 { col_key.push('|'); }
+                if i > 0 {
+                    col_key.push('|');
+                }
                 let column = batch.column_by_name(field).unwrap();
                 let val = self.extract_string_value(column, row_idx);
                 col_key.push_str(&val);
@@ -82,20 +144,23 @@ impl<'a> PivotEngine<'a> {
             // Extract values from all value fields
             for value_field in &config.value_fields {
                 let value_column = batch.column_by_name(value_field).unwrap();
-                value = self.extract_numeric_value(value_column, row_idx);
-                
+                let value = self.extract_numeric_value(value_column, row_idx);
+
                 // Store in grouped data structure with composite key (col_key, value_field)
                 let composite_key = (col_key.clone(), value_field.clone());
-                grouped_data.entry(row_key.clone())
+                grouped_data
+                    .entry(row_key.clone())
                     .or_insert_with(HashMap::new)
                     .entry(composite_key)
-                    .and_modify(|v| *v += value)
-                    .or_insert(value);
+                    .and_modify(|agg| agg.update(value))
+                    .or_insert_with(|| AggregationValue::new(&config.aggregation_type, value));
             }
         }
 
         // Convert grouped data back to RecordBatch
-        self.grouped_data_to_batch(grouped_data, config)
+        let result = self.grouped_data_to_batch(grouped_data, config);
+
+        result
     }
 
     fn extract_string_value(&self, column: &ArrayRef, row_idx: usize) -> String {
@@ -128,11 +193,12 @@ impl<'a> PivotEngine<'a> {
 
     fn grouped_data_to_batch(
         &self,
-        grouped_data: HashMap<String, HashMap<(String, String), f64>>,
+        grouped_data: HashMap<String, HashMap<(String, String), AggregationValue>>,
         config: &PivotConfig,
     ) -> Result<RecordBatch, String> {
         // Collect all unique composite keys (col_key, value_field)
-        let mut all_composite_keys: std::collections::HashSet<(String, String)> = std::collections::HashSet::new();
+        let mut all_composite_keys: std::collections::HashSet<(String, String)> =
+            std::collections::HashSet::new();
         for row_data in grouped_data.values() {
             for composite_key in row_data.keys() {
                 all_composite_keys.insert(composite_key.clone());
@@ -159,9 +225,9 @@ impl<'a> PivotEngine<'a> {
 
         for (row_key, row_data) in grouped_data {
             row_keys.push(Some(row_key));
-            
+
             for (col_idx, composite_key) in composite_keys.iter().enumerate() {
-                let value = row_data.get(composite_key).copied();
+                let value = row_data.get(composite_key).map(|agg| agg.finalize());
                 column_data[col_idx].push(value);
             }
         }

@@ -19,14 +19,14 @@ function App() {
       <Router>
         <div className="App min-h-screen">
           <Routes>
-            <Route path="/" element={<HomePage />} />
-            <Route path="/data-engine" element={<EnhancedDataEnginePage />} />
-            <Route path="/data-engine-legacy" element={<DataEnginePage />} />
+            <Route path="/" element={<EnhancedDataEnginePage />} />
+            {/* <Route path="/data-engine" element={<EnhancedDataEnginePage />} /> */}
+            {/* <Route path="/data-engine-legacy" element={<DataEnginePage />} />
             <Route path="/wasm-test" element={<WasmTestPage />} />
             <Route path="/chart-renderer" element={<ChartRendererPage />} />
             <Route path="/query-optimizer" element={<QueryOptimizerPage />} />
             <Route path="/parallel-compute" element={<ParallelComputePage />} />
-            <Route path="*" element={<Navigate to="/" replace />} />
+            <Route path="*" element={<Navigate to="/" replace />} /> */}
           </Routes>
           <Toaster />
         </div>

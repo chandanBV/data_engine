@@ -19,9 +19,8 @@ export const loadWasmModule = async () => {
     try {
       console.log("🔄 Loading WASM module...");
 
-      // Dynamic import - use the root wasm directory, not subdirectory
-      // wasm-pack outputs to wasm/ not wasm/data-engine/
-      const module = await import("../wasm/data_engine.js");
+      // Dynamic import - use the data-engine subdirectory as built by wasm-pack
+      const module = await import("../wasm/data-engine/data_engine.js");
       console.log("📦 WASM module structure:", Object.keys(module));
 
       // Handle different export structures for different targets

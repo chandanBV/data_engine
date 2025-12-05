@@ -43,6 +43,7 @@ const ResultViewer = ({
   onReset = null,
 }) => {
   const [tableData, setTableData] = useState(null);
+  const [loadedRows, setLoadedRows] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
@@ -50,6 +51,8 @@ const ResultViewer = ({
   const [columnFilters, setColumnFilters] = useState({});
   const [selectedDataTypes, setSelectedDataTypes] = useState({});
   const [totalRows, setTotalRows] = useState(0);
+  const [performanceMetrics, setPerformanceMetrics] = useState(null);
+  const [hasMoreData, setHasMoreData] = useState(false);
 
   // Auto-fetch JSON data when result changes
   useEffect(() => {
@@ -58,6 +61,11 @@ const ResultViewer = ({
       if (!result) return; // No data to display
 
       setIsLoading(true);
+
+      // PERFORMANCE: Start timing
+      const perfStart = performance.now();
+      console.log("🚀 PERFORMANCE: Starting data fetch...");
+
       try {
         let parsed;
 
@@ -67,41 +75,25 @@ const ResultViewer = ({
         if (result.type && result.data) {
           console.log("ResultViewer - Processing result type:", result.type);
 
-          // Check if data is Arrow IPC buffer (Uint8Array)
-          if (result.data instanceof Uint8Array) {
-            console.log(
-              "ResultViewer - Data is Arrow IPC buffer, need to convert to JSON"
-            );
-            // For now, we need to get JSON from the engine after the operation
-            // The operations should have updated the engine's data
-            const count = await dataEngine.get_row_count();
-            setTotalRows(count);
-            const limit = Math.min(count, 10000);
-            const jsonResult = await dataEngine.get_data_json_limit(limit);
-            parsed = JSON.parse(jsonResult);
-            console.log("ResultViewer - Converted Arrow to JSON:", parsed);
-          } else if (typeof result.data === "string") {
-            // Data is already JSON string
+          // Results are now returned as JSON directly from Rust
+          if (typeof result.data === "string") {
             parsed = JSON.parse(result.data);
-            console.log("ResultViewer - Parsed JSON string:", parsed);
+            console.log("ResultViewer - Parsed JSON result:", parsed);
           } else {
             // Data is already a JavaScript object
             parsed = result.data;
             console.log("ResultViewer - Using data object directly:", parsed);
           }
+
+          // Update totalRows to reflect the actual result count (not original dataset)
+          setTotalRows(parsed.length);
+          console.log(`ResultViewer - Updated totalRows to ${parsed.length} for ${result.type} operation`);
         } else if (result.data) {
-          // This is raw uploaded data with { data: ... } structure
-          console.log(
-            "ResultViewer - Raw uploaded data, fetching from engine..."
-          );
-          console.log("ResultViewer - dataEngine:", dataEngine);
-          console.log(
-            "ResultViewer - get_row_count exists:",
-            typeof dataEngine.get_row_count
-          );
+          // This is raw uploaded data - use pagination for performance
+          console.log("ResultViewer - Raw uploaded data, using pagination...");
 
           const count = await dataEngine.get_row_count();
-          console.log("ResultViewer - Row count:", count);
+          console.log("ResultViewer - Total row count:", count);
           setTotalRows(count);
 
           if (count === 0) {
@@ -110,24 +102,25 @@ const ResultViewer = ({
             return;
           }
 
-          // Load max 10,000 rows to prevent browser crash
-          const limit = Math.min(count, 10000);
-          console.log("ResultViewer - Fetching", limit, "rows...");
-          const jsonResult = await dataEngine.get_data_json_limit(limit);
-          console.log("ResultViewer - JSON result length:", jsonResult?.length);
-          console.log(
-            "ResultViewer - JSON result preview:",
-            jsonResult?.substring(0, 200)
-          );
+          // PERFORMANCE: JSON fetch timing
+          const jsonFetchStart = performance.now();
+          console.log("⚡ PERFORMANCE: Fetching paginated JSON data...");
 
-          parsed = JSON.parse(jsonResult);
-          console.log("ResultViewer - Parsed data:", parsed);
-          console.log("ResultViewer - Parsed data length:", parsed?.length);
+          // Load first 10,000 rows for initial display
+          const initialLimit = Math.min(10000, count);
+          const jsonData = await dataEngine.get_data_json_paginated(0, initialLimit);
+          console.log("ResultViewer - JSON data received, length:", jsonData.length);
+
+          const jsonFetchTime = performance.now() - jsonFetchStart;
+          console.log(`✅ PERFORMANCE: JSON fetch completed in ${jsonFetchTime.toFixed(2)}ms (${(jsonData.length / 1024).toFixed(2)} KB)`);
+
+          parsed = JSON.parse(jsonData);
+          setHasMoreData(count > initialLimit);
+
+          console.log("ResultViewer - Parsed", parsed.length, "rows from JSON");
 
           if (count > 10000) {
-            toast.info(
-              `Loaded first ${limit.toLocaleString()} of ${count.toLocaleString()} rows for performance`
-            );
+            toast.info(`Loaded first ${initialLimit.toLocaleString()} of ${count.toLocaleString()} rows. Use pagination for more data.`);
           }
         } else {
           console.error("ResultViewer - Invalid result structure:", result);
@@ -136,6 +129,21 @@ const ResultViewer = ({
 
         setTableData(parsed);
         setCurrentPage(1); // Reset to first page on new data
+        setLoadedRows(parsed.length); // Track how many rows are loaded
+
+        // PERFORMANCE: Total time
+        const totalTime = performance.now() - perfStart;
+        console.log(`🎯 PERFORMANCE: Total data processing completed in ${totalTime.toFixed(2)}ms`);
+        console.log(`📊 PERFORMANCE SUMMARY: ${parsed.length} rows loaded, ${(parsed.length / totalTime * 1000).toFixed(0)} rows/sec overall`);
+
+        // Store performance metrics for display
+        setPerformanceMetrics({
+          totalTime: totalTime.toFixed(2),
+          rowsProcessed: parsed.length,
+          throughput: (parsed.length / totalTime * 1000).toFixed(0),
+          timestamp: new Date().toISOString()
+        });
+
       } catch (error) {
         console.error("Error fetching data:", error);
         toast.error("Failed to load data");
@@ -239,12 +247,35 @@ const ResultViewer = ({
 
   const totalPages = Math.ceil(filteredData.length / pageSize);
 
-  const handleExportCSV = () => {
-    if (!tableData || tableData.length === 0) {
-      toast.error("No data to export");
-      return;
-    }
+  const handleLoadMore = async () => {
+    if (!dataEngine || !tableData || isLoading) return;
 
+    setIsLoading(true);
+    try {
+      const currentCount = tableData.length;
+      const nextBatchSize = Math.min(10000, totalRows - currentCount); // Load next 10K or remaining
+
+      console.log(`Loading ${nextBatchSize} more rows (offset: ${currentCount})`);
+
+      const jsonData = await dataEngine.get_data_json_paginated(currentCount, nextBatchSize);
+      const newData = JSON.parse(jsonData);
+
+      // Append new data to existing data
+      const combinedData = [...tableData, ...newData];
+      setTableData(combinedData);
+      setLoadedRows(combinedData.length);
+      setHasMoreData(combinedData.length < totalRows);
+
+      toast.success(`Loaded ${newData.length} more rows (${combinedData.length}/${totalRows} total)`);
+    } catch (error) {
+      console.error("Error loading more data:", error);
+      toast.error("Failed to load more data");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleExportCSV = () => {
     try {
       const columns = Object.keys(tableData[0]);
       const csv = [
@@ -397,6 +428,17 @@ const ResultViewer = ({
                 Reset to Original Data
               </Button>
             )}
+            {hasMoreData && tableData && tableData.length < totalRows && !result.type && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleLoadMore}
+                disabled={isLoading}
+              >
+                <Download className="h-4 w-4 mr-2" />
+                Load More Data
+              </Button>
+            )}
             <Button variant="outline" size="sm" onClick={handleExportCSV}>
               <Download className="h-4 w-4 mr-2" />
               CSV
@@ -410,6 +452,44 @@ const ResultViewer = ({
       </CardHeader>
       <CardContent>
         <div className="space-y-4">
+          {/* Performance Metrics - Compact Display */}
+          {performanceMetrics && (
+            <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-md p-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-lg">⚡</span>
+                  <span className="font-medium text-blue-900 dark:text-blue-100 text-sm">Performance</span>
+                </div>
+                <div className="text-xs text-blue-600 dark:text-blue-400">
+                  {performanceMetrics.timestamp ? new Date(performanceMetrics.timestamp).toLocaleTimeString() : 'Just now'}
+                </div>
+              </div>
+              
+              <div className="flex items-center gap-6 mt-2 text-sm">
+                <div className="text-blue-900 dark:text-blue-100">
+                  <span className="font-medium">{performanceMetrics.totalTime}ms</span>
+                  <span className="text-blue-600 dark:text-blue-400 ml-1">processing</span>
+                </div>
+                
+                <div className="text-green-900 dark:text-green-100">
+                  <span className="font-medium">{performanceMetrics.throughput}</span>
+                  <span className="text-green-600 dark:text-green-400 ml-1">rows/sec</span>
+                </div>
+                
+                <div className="text-purple-900 dark:text-purple-100">
+                  <span className="font-medium">{performanceMetrics.rowsProcessed.toLocaleString()}</span>
+                  <span className="text-purple-600 dark:text-purple-400 ml-1">rows</span>
+                </div>
+              </div>
+              
+              {totalRows > tableData.length && !result.type && (
+                <div className="mt-2 text-xs text-blue-600 dark:text-blue-400">
+                  Showing {tableData.length.toLocaleString()} of {totalRows.toLocaleString()} total rows
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Search and filters */}
           <div className="flex gap-2 items-center">
             <div className="relative flex-1">
@@ -525,8 +605,24 @@ const ResultViewer = ({
           {/* Pagination */}
           {showPagination && totalPages > 1 && (
             <div className="flex items-center justify-between">
-              <div className="text-sm text-muted-foreground">
-                Page {currentPage} of {totalPages}
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground">Page</span>
+                <Select
+                  value={String(currentPage)}
+                  onValueChange={(v) => setCurrentPage(Number(v))}
+                >
+                  <SelectTrigger className="w-20">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => (
+                      <SelectItem key={pageNum} value={String(pageNum)}>
+                        {pageNum}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <span className="text-sm text-muted-foreground">of {totalPages}</span>
               </div>
               <div className="flex gap-2">
                 <Button

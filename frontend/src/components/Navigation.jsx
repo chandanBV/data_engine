@@ -9,11 +9,11 @@ export const Navigation = () => {
   const { theme, setTheme } = useTheme();
   
   const navItems = [
-    { path: '/', label: 'Home' },
-    { path: '/data-engine', label: 'Data Engine' },
-    { path: '/chart-renderer', label: 'Chart Renderer' },
-    { path: '/query-optimizer', label: 'Query Optimizer' },
-    { path: '/parallel-compute', label: 'Parallel Compute' },
+    { path: '/', label: 'Data Engine' },
+    // { path: '/data-engine', label: 'Data Engine' },
+    // { path: '/chart-renderer', label: 'Chart Renderer' },
+    // { path: '/query-optimizer', label: 'Query Optimizer' },
+    // { path: '/parallel-compute', label: 'Parallel Compute' },
   ];
 
   const isActive = (path) => location.pathname === path;
