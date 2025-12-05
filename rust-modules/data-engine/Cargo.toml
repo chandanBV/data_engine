@@ -3,6 +3,9 @@ name = "data-engine"
 version = "0.1.0"
 edition = "2021"
 
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = false  # Disable wasm-opt to avoid bulk memory issues
+
 [lib]
 crate-type = ["cdylib", "rlib"]
 
@@ -26,11 +29,5 @@ wee_alloc = { version = "0.4", optional = true }
 [features]
 default = ["console_error_panic_hook", "wee_alloc"]
 
-# Optional dependencies for advanced features
-# arrow = "48.0"  # For Arrow format support
-# rayon = "1.8"   # For parallel processing
-
-[profile.release]
-opt-level = "z"  # Optimize for size
-lto = true       # Enable Link Time Optimization
-codegen-units = 1
+# Note: Release profile is configured in workspace root Cargo.toml
+# (profiles in workspace members are ignored)

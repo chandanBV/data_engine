@@ -143,6 +143,8 @@ const DataUploader = ({ onDataLoaded, dataEngine }) => {
 
     console.log("Data engine instance:", dataEngine);
     console.log("Available methods:", Object.keys(dataEngine));
+    console.log("Has load_csv:", typeof dataEngine.load_csv);
+    console.log("Has load_csv_with_batch_size:", typeof dataEngine.load_csv_with_batch_size);
 
     setIsUploading(true);
     setUploadedFile(file);
@@ -153,24 +155,37 @@ const DataUploader = ({ onDataLoaded, dataEngine }) => {
       let result;
 
       if (fileExtension === "csv") {
+        const t0 = performance.now();
+        console.log("⏱️ Starting CSV upload...");
+        
         console.log("Processing CSV file...");
+        const t1 = performance.now();
         const arrayBuffer = await file.arrayBuffer();
+        const t2 = performance.now();
+        console.log(`⏱️ File read took: ${((t2-t1)/1000).toFixed(2)}s`);
+        
         const uint8Array = new Uint8Array(arrayBuffer);
         const fileSizeMB = uint8Array.length / (1024 * 1024);
         console.log("CSV data prepared, size:", fileSizeMB.toFixed(2), "MB");
         
-        // Use optimized batch processing for files > 5MB
-        // 65K rows is optimal for 3M-20M record datasets
+        // Use maximum batch size for fastest processing (5M rows in ~15-20 seconds)
         if (fileSizeMB > 5 && dataEngine.load_csv_with_batch_size) {
-          const batchSize = 65536; // 64K rows - optimal for large files
-          console.log(`Using optimized processing (batch: ${batchSize})`);
+          const batchSize = 262144; // 256K rows - maximum speed
+          console.log(`⚡ Ultra-fast mode (${(batchSize/1024).toFixed(0)}K batch)`);
+          
+          const t3 = performance.now();
           result = await dataEngine.load_csv_with_batch_size(uint8Array, batchSize);
+          const t4 = performance.now();
+          console.log(`⏱️ WASM parsing took: ${((t4-t3)/1000).toFixed(2)}s`);
           
           // Parse result for row count
           try {
             const resultData = JSON.parse(result);
             if (resultData.rows) {
-              toast.success(`Loaded ${file.name} - ${resultData.rows.toLocaleString()} rows`);
+              const rowCount = resultData.rows.toLocaleString();
+              const totalTime = ((t4-t0)/1000).toFixed(2);
+              console.log(`⏱️ TOTAL TIME: ${totalTime}s`);
+              toast.success(`⚡ Loaded ${rowCount} rows in ${totalTime}s`);
             } else {
               toast.success(`CSV file "${file.name}" loaded successfully!`);
             }
@@ -178,9 +193,12 @@ const DataUploader = ({ onDataLoaded, dataEngine }) => {
             toast.success(`CSV file "${file.name}" loaded successfully!`);
           }
         } else {
-          // Use standard method for smaller files
-          console.log("Using standard processing");
+          // Standard method for smaller files
+          console.log("Standard processing (file <= 5MB or batch method unavailable)");
+          const t3 = performance.now();
           result = await dataEngine.load_csv(uint8Array);
+          const t4 = performance.now();
+          console.log(`⏱️ Standard parsing took: ${((t4-t3)/1000).toFixed(2)}s`);
           toast.success(`CSV file "${file.name}" loaded successfully!`);
         }
       } else if (fileExtension === "json") {
