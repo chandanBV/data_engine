@@ -120,7 +120,6 @@ const ResultViewer = ({
              setIsLoading(false);
              return;
           }
-
           if (hasWindowSupport) {
             console.log(`ResultViewer - Fetching window ${windowStart} to ${windowStart + DATA_WINDOW_SIZE}`);
             const jsonResult = await dataEngine.get_data_json_window(windowStart, windowStart + DATA_WINDOW_SIZE);
