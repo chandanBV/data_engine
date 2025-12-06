@@ -587,13 +587,75 @@ impl DataEngine {
                                 serde_json::Value::Bool(bool_array.value(row_idx))
                             }
                         }
-                        arrow::datatypes::DataType::Date32 | arrow::datatypes::DataType::Date64 => {
-                            // Convert dates to string representation
-                            serde_json::Value::String(format!("{:?}", column))
+                        arrow::datatypes::DataType::Date32 => {
+                            let array = column.as_any().downcast_ref::<arrow::array::Date32Array>().unwrap();
+                            if array.is_null(row_idx) {
+                                serde_json::Value::Null
+                            } else {
+                                match array.value_as_date(row_idx) {
+                                    Some(date) => serde_json::Value::String(date.to_string()),
+                                    None => serde_json::Value::Null,
+                                }
+                            }
                         }
-                        arrow::datatypes::DataType::Timestamp(_, _) => {
-                            // Convert timestamps to string representation
-                            serde_json::Value::String(format!("{:?}", column))
+                        arrow::datatypes::DataType::Date64 => {
+                            let array = column.as_any().downcast_ref::<arrow::array::Date64Array>().unwrap();
+                            if array.is_null(row_idx) {
+                                serde_json::Value::Null
+                            } else {
+                                match array.value_as_date(row_idx) {
+                                    Some(date) => serde_json::Value::String(date.to_string()),
+                                    None => serde_json::Value::Null,
+                                }
+                            }
+                        }
+                        arrow::datatypes::DataType::Timestamp(unit, _) => {
+                            match unit {
+                                arrow::datatypes::TimeUnit::Nanosecond => {
+                                    let array = column.as_any().downcast_ref::<arrow::array::TimestampNanosecondArray>().unwrap();
+                                    if array.is_null(row_idx) {
+                                        serde_json::Value::Null
+                                    } else {
+                                        match array.value_as_datetime(row_idx) {
+                                            Some(dt) => serde_json::Value::String(dt.to_string()),
+                                            None => serde_json::Value::Null,
+                                        }
+                                    }
+                                }
+                                arrow::datatypes::TimeUnit::Microsecond => {
+                                    let array = column.as_any().downcast_ref::<arrow::array::TimestampMicrosecondArray>().unwrap();
+                                    if array.is_null(row_idx) {
+                                        serde_json::Value::Null
+                                    } else {
+                                        match array.value_as_datetime(row_idx) {
+                                            Some(dt) => serde_json::Value::String(dt.to_string()),
+                                            None => serde_json::Value::Null,
+                                        }
+                                    }
+                                }
+                                arrow::datatypes::TimeUnit::Millisecond => {
+                                    let array = column.as_any().downcast_ref::<arrow::array::TimestampMillisecondArray>().unwrap();
+                                    if array.is_null(row_idx) {
+                                        serde_json::Value::Null
+                                    } else {
+                                        match array.value_as_datetime(row_idx) {
+                                            Some(dt) => serde_json::Value::String(dt.to_string()),
+                                            None => serde_json::Value::Null,
+                                        }
+                                    }
+                                }
+                                arrow::datatypes::TimeUnit::Second => {
+                                    let array = column.as_any().downcast_ref::<arrow::array::TimestampSecondArray>().unwrap();
+                                    if array.is_null(row_idx) {
+                                        serde_json::Value::Null
+                                    } else {
+                                        match array.value_as_datetime(row_idx) {
+                                            Some(dt) => serde_json::Value::String(dt.to_string()),
+                                            None => serde_json::Value::Null,
+                                        }
+                                    }
+                                }
+                            }
                         }
                         arrow::datatypes::DataType::Null => serde_json::Value::Null,
                         _ => {
@@ -620,6 +682,256 @@ impl DataEngine {
             ))),
         }
     }
+
+    /// Get data as JSON within a specific window (start_row to end_row)
+    pub fn get_data_json_window(&self, start_row: usize, end_row: usize) -> Result<JsValue, JsValue> {
+        let data = self.data.get("data")
+            .ok_or_else(|| JsValue::from_str("No data available"))?;
+        
+        if data.is_empty() {
+            return Ok(JsValue::from_str("[]"));
+        }
+
+        let total_rows = self.get_row_count();
+        if start_row >= total_rows {
+             return Ok(JsValue::from_str("[]"));
+        }
+
+        let end_row = std::cmp::min(end_row, total_rows);
+        let limit = end_row - start_row;
+
+        let mut json_rows = Vec::new();
+        let mut rows_skipped = 0;
+        let mut rows_processed = 0;
+        
+        'outer: for batch in data.iter() {
+            let batch_rows = batch.num_rows();
+            
+            // Skip entire batches if we haven't reached start_row yet
+            if rows_skipped + batch_rows <= start_row {
+                rows_skipped += batch_rows;
+                continue;
+            }
+
+            // In this batch, find where to start
+            let start_in_batch = if rows_skipped < start_row {
+                start_row - rows_skipped
+            } else {
+                0
+            };
+
+            for row_idx in start_in_batch..batch_rows {
+                if rows_processed >= limit {
+                    break 'outer;
+                }
+                
+                let mut row_obj = serde_json::Map::new();
+                
+                for (col_idx, field) in batch.schema().fields().iter().enumerate() {
+                    let column = batch.column(col_idx);
+                    let field_name = field.name();
+                    
+                    // Handle all Arrow data types
+                    let value = match column.data_type() {
+                        arrow::datatypes::DataType::Utf8 => {
+                            let string_array = column.as_any().downcast_ref::<arrow::array::StringArray>().unwrap();
+                            if string_array.is_null(row_idx) {
+                                serde_json::Value::Null
+                            } else {
+                                serde_json::Value::String(string_array.value(row_idx).to_string())
+                            }
+                        }
+                        arrow::datatypes::DataType::LargeUtf8 => {
+                            let string_array = column.as_any().downcast_ref::<arrow::array::LargeStringArray>().unwrap();
+                            if string_array.is_null(row_idx) {
+                                serde_json::Value::Null
+                            } else {
+                                serde_json::Value::String(string_array.value(row_idx).to_string())
+                            }
+                        }
+                        arrow::datatypes::DataType::Int8 => {
+                            let int_array = column.as_any().downcast_ref::<arrow::array::Int8Array>().unwrap();
+                            if int_array.is_null(row_idx) {
+                                serde_json::Value::Null
+                            } else {
+                                serde_json::Value::Number(serde_json::Number::from(int_array.value(row_idx)))
+                            }
+                        }
+                        arrow::datatypes::DataType::Int16 => {
+                            let int_array = column.as_any().downcast_ref::<arrow::array::Int16Array>().unwrap();
+                            if int_array.is_null(row_idx) {
+                                serde_json::Value::Null
+                            } else {
+                                serde_json::Value::Number(serde_json::Number::from(int_array.value(row_idx)))
+                            }
+                        }
+                        arrow::datatypes::DataType::Int32 => {
+                            let int_array = column.as_any().downcast_ref::<arrow::array::Int32Array>().unwrap();
+                            if int_array.is_null(row_idx) {
+                                serde_json::Value::Null
+                            } else {
+                                serde_json::Value::Number(serde_json::Number::from(int_array.value(row_idx)))
+                            }
+                        }
+                        arrow::datatypes::DataType::Int64 => {
+                            let int_array = column.as_any().downcast_ref::<arrow::array::Int64Array>().unwrap();
+                            if int_array.is_null(row_idx) {
+                                serde_json::Value::Null
+                            } else {
+                                serde_json::Value::Number(serde_json::Number::from(int_array.value(row_idx)))
+                            }
+                        }
+                        arrow::datatypes::DataType::UInt8 => {
+                            let int_array = column.as_any().downcast_ref::<arrow::array::UInt8Array>().unwrap();
+                            if int_array.is_null(row_idx) {
+                                serde_json::Value::Null
+                            } else {
+                                serde_json::Value::Number(serde_json::Number::from(int_array.value(row_idx)))
+                            }
+                        }
+                        arrow::datatypes::DataType::UInt16 => {
+                            let int_array = column.as_any().downcast_ref::<arrow::array::UInt16Array>().unwrap();
+                            if int_array.is_null(row_idx) {
+                                serde_json::Value::Null
+                            } else {
+                                serde_json::Value::Number(serde_json::Number::from(int_array.value(row_idx)))
+                            }
+                        }
+                        arrow::datatypes::DataType::UInt32 => {
+                            let int_array = column.as_any().downcast_ref::<arrow::array::UInt32Array>().unwrap();
+                            if int_array.is_null(row_idx) {
+                                serde_json::Value::Null
+                            } else {
+                                serde_json::Value::Number(serde_json::Number::from(int_array.value(row_idx)))
+                            }
+                        }
+                        arrow::datatypes::DataType::UInt64 => {
+                            let int_array = column.as_any().downcast_ref::<arrow::array::UInt64Array>().unwrap();
+                            if int_array.is_null(row_idx) {
+                                serde_json::Value::Null
+                            } else {
+                                serde_json::Value::Number(serde_json::Number::from(int_array.value(row_idx)))
+                            }
+                        }
+                        arrow::datatypes::DataType::Float32 => {
+                            let float_array = column.as_any().downcast_ref::<arrow::array::Float32Array>().unwrap();
+                            if float_array.is_null(row_idx) {
+                                serde_json::Value::Null
+                            } else {
+                                serde_json::Value::Number(serde_json::Number::from_f64(float_array.value(row_idx) as f64).unwrap_or(serde_json::Number::from(0)))
+                            }
+                        }
+                        arrow::datatypes::DataType::Float64 => {
+                            let float_array = column.as_any().downcast_ref::<arrow::array::Float64Array>().unwrap();
+                            if float_array.is_null(row_idx) {
+                                serde_json::Value::Null
+                            } else {
+                                serde_json::Value::Number(serde_json::Number::from_f64(float_array.value(row_idx)).unwrap_or(serde_json::Number::from(0)))
+                            }
+                        }
+                        arrow::datatypes::DataType::Boolean => {
+                            let bool_array = column.as_any().downcast_ref::<arrow::array::BooleanArray>().unwrap();
+                            if bool_array.is_null(row_idx) {
+                                serde_json::Value::Null
+                            } else {
+                                serde_json::Value::Bool(bool_array.value(row_idx))
+                            }
+                        }
+                        arrow::datatypes::DataType::Date32 => {
+                            let array = column.as_any().downcast_ref::<arrow::array::Date32Array>().unwrap();
+                            if array.is_null(row_idx) {
+                                serde_json::Value::Null
+                            } else {
+                                match array.value_as_date(row_idx) {
+                                    Some(date) => serde_json::Value::String(date.to_string()),
+                                    None => serde_json::Value::Null,
+                                }
+                            }
+                        }
+                        arrow::datatypes::DataType::Date64 => {
+                            let array = column.as_any().downcast_ref::<arrow::array::Date64Array>().unwrap();
+                            if array.is_null(row_idx) {
+                                serde_json::Value::Null
+                            } else {
+                                match array.value_as_date(row_idx) {
+                                    Some(date) => serde_json::Value::String(date.to_string()),
+                                    None => serde_json::Value::Null,
+                                }
+                            }
+                        }
+                        arrow::datatypes::DataType::Timestamp(unit, _) => {
+                            match unit {
+                                arrow::datatypes::TimeUnit::Nanosecond => {
+                                    let array = column.as_any().downcast_ref::<arrow::array::TimestampNanosecondArray>().unwrap();
+                                    if array.is_null(row_idx) {
+                                        serde_json::Value::Null
+                                    } else {
+                                        match array.value_as_datetime(row_idx) {
+                                            Some(dt) => serde_json::Value::String(dt.to_string()),
+                                            None => serde_json::Value::Null,
+                                        }
+                                    }
+                                }
+                                arrow::datatypes::TimeUnit::Microsecond => {
+                                    let array = column.as_any().downcast_ref::<arrow::array::TimestampMicrosecondArray>().unwrap();
+                                    if array.is_null(row_idx) {
+                                        serde_json::Value::Null
+                                    } else {
+                                        match array.value_as_datetime(row_idx) {
+                                            Some(dt) => serde_json::Value::String(dt.to_string()),
+                                            None => serde_json::Value::Null,
+                                        }
+                                    }
+                                }
+                                arrow::datatypes::TimeUnit::Millisecond => {
+                                    let array = column.as_any().downcast_ref::<arrow::array::TimestampMillisecondArray>().unwrap();
+                                    if array.is_null(row_idx) {
+                                        serde_json::Value::Null
+                                    } else {
+                                        match array.value_as_datetime(row_idx) {
+                                            Some(dt) => serde_json::Value::String(dt.to_string()),
+                                            None => serde_json::Value::Null,
+                                        }
+                                    }
+                                }
+                                arrow::datatypes::TimeUnit::Second => {
+                                    let array = column.as_any().downcast_ref::<arrow::array::TimestampSecondArray>().unwrap();
+                                    if array.is_null(row_idx) {
+                                        serde_json::Value::Null
+                                    } else {
+                                        match array.value_as_datetime(row_idx) {
+                                            Some(dt) => serde_json::Value::String(dt.to_string()),
+                                            None => serde_json::Value::Null,
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        arrow::datatypes::DataType::Null => {
+                            serde_json::Value::Null
+                        }
+                        _ => {
+                            serde_json::Value::String(format!("{:?}", column))
+                        }
+                    };
+                    
+                    row_obj.insert(field_name.clone(), value);
+                }
+                
+                json_rows.push(serde_json::Value::Object(row_obj));
+                rows_processed += 1;
+            }
+            rows_skipped += batch_rows;
+        }
+        
+        let json_result = serde_json::Value::Array(json_rows);
+        match serde_json::to_string(&json_result) {
+            Ok(json_string) => Ok(JsValue::from_str(&json_string)),
+            Err(e) => Err(JsValue::from_str(&format!("JSON serialization failed: {}", e)))
+        }
+    }
+
+    /// Get data as JSON within a specific window (start_row to end_row)
 
     // Legacy aggregation method for backward compatibility
     pub fn aggregation(&self, col_name: &str, op: AggOp) -> Result<f64, String> {
@@ -738,6 +1050,14 @@ impl WasmDataEngine {
     pub fn get_data_json_paginated(&self, offset: usize, limit: usize) -> Result<JsValue, JsValue> {
         self.engine.get_data_json_paginated(offset, limit)
     }
+
+    /// Get data as JSON within a specific window (start_row to end_row)
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
+    pub fn get_data_json_window(&self, start_row: usize, end_row: usize) -> Result<JsValue, JsValue> {
+        self.engine.get_data_json_window(start_row, end_row)
+    }
+
+
 
     /// Get total row count
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]

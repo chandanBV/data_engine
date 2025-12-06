@@ -114,11 +114,31 @@ const ProcessingControls = ({ dataEngine, onResult, schema, compact = false }) =
         aggregation_type: pivotConfig.aggregationType
       };
 
+      const startTime = performance.now();
       const result = await dataEngine.pivot(JSON.stringify(config));
+      const endTime = performance.now();
+      
+      // Parse result to get row count
+      let rowCount = 0;
+      try {
+        const parsed = typeof result === 'string' ? JSON.parse(result) : result;
+        rowCount = Array.isArray(parsed) ? parsed.length : 0;
+      } catch (e) {}
+
+      const durationMs = endTime - startTime;
+      const metrics = {
+        type: 'pivot',
+        rows: rowCount,
+        time: Math.round(durationMs),
+        throughput: rowCount > 0 ? (rowCount / (durationMs / 1000)) : 0,
+        details: `Pivot: ${pivotConfig.rowFields.join(',')} x ${pivotConfig.columnFields.join(',')}`
+      };
+
       onResult({
         type: 'pivot',
         data: result,
-        config: config
+        config: config,
+        metrics: metrics
       });
       
       toast.success('Pivot operation completed successfully!');
@@ -155,11 +175,31 @@ const ProcessingControls = ({ dataEngine, onResult, schema, compact = false }) =
         aggregations: aggregateConfig.aggregations
       };
 
+      const startTime = performance.now();
       const result = await dataEngine.aggregate(JSON.stringify(config));
+      const endTime = performance.now();
+      
+      // Parse result to get row count
+      let rowCount = 0;
+      try {
+        const parsed = typeof result === 'string' ? JSON.parse(result) : result;
+        rowCount = Array.isArray(parsed) ? parsed.length : 0;
+      } catch (e) {}
+
+      const durationMs = endTime - startTime;
+      const metrics = {
+        type: 'aggregate',
+        rows: rowCount,
+        time: Math.round(durationMs),
+        throughput: rowCount > 0 ? (rowCount / (durationMs / 1000)) : 0,
+        details: `Aggregate by ${aggregateConfig.groupByFields.join(', ')}`
+      };
+
       onResult({
         type: 'aggregate',
         data: result,
-        config: config
+        config: config,
+        metrics: metrics
       });
       
       toast.success('Aggregation completed successfully!');
@@ -191,11 +231,36 @@ const ProcessingControls = ({ dataEngine, onResult, schema, compact = false }) =
         console.warn('Could not reset to original data:', resetError);
       }
 
+      const startTime = performance.now();
       const result = await dataEngine.filter(JSON.stringify(filterConfig));
+      const endTime = performance.now();
+      
+      // Parse result to get row count
+      let rowCount = 0;
+      try {
+        // For filter, we might need to get row count from engine if result is just a sample
+        if (dataEngine.get_row_count) {
+          rowCount = dataEngine.get_row_count();
+        } else {
+           const parsed = typeof result === 'string' ? JSON.parse(result) : result;
+           rowCount = Array.isArray(parsed) ? parsed.length : 0;
+        }
+      } catch (e) {}
+
+      const durationMs = endTime - startTime;
+      const metrics = {
+        type: 'filter',
+        rows: rowCount,
+        time: Math.round(durationMs),
+        throughput: rowCount > 0 ? (rowCount / (durationMs / 1000)) : 0,
+        details: `Filtered by ${filterConfig.filters.length} criteria`
+      };
+
       onResult({
         type: 'filter',
         data: result,
-        config: filterConfig
+        config: filterConfig,
+        metrics: metrics
       });
       
       toast.success('Filter operation completed successfully!');

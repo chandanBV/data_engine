@@ -2,6 +2,12 @@
 name = "data-engine"
 version = "0.1.0"
 edition = "2021"
+description = "High-performance WASM data processing engine with CSV parsing, filtering, and aggregation"
+repository = "https://github.com/your-org/wasm-data-engine"
+license = "MIT"
+authors = ["Your Name <your.email@example.com>"]
+keywords = ["wasm", "data", "csv", "arrow", "processing"]
+categories = ["wasm", "database"]
 
 [package.metadata.wasm-pack.profile.release]
 wasm-opt = false  # Disable wasm-opt to avoid bulk memory issues

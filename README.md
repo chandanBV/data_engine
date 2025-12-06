@@ -1,12 +1,14 @@
 # Rust + WebAssembly Boilerplate
 
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FSurendiraBabuR_lumel%2Fwasm-data-engine)
+
 ## Project Overview
 
 This is a complete, production-ready boilerplate for building high-performance browser applications with Rust and WebAssembly. It includes four fully-functional examples demonstrating real-world use cases.
 
 ## What's Included
 
-### Frontend (React + Vite)
+### Frontend (React + Create React App)
 - Modern React application with routing
 - Beautiful UI built with Tailwind CSS and shadcn/ui
 - Four interactive demo pages showcasing each use case

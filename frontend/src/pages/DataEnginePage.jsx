@@ -7,8 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs'
 import { Alert, AlertDescription } from '../components/ui/alert';
 import { Database, Play, Code2, Info, Zap, Upload } from 'lucide-react';
 import { toast } from 'sonner';
-import { createDataEngine } from '../utils/wasmLoader';
-
+// Note: WASM module is loaded via wasmLoader.js, not directly imported here
 // Global worker counter for tracking
 let activeWorkers = 0;
 
