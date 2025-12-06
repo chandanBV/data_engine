@@ -29,6 +29,8 @@ import {
   Eye,
   ChevronLeft,
   ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
   Filter,
   Search,
 } from "lucide-react";
@@ -51,10 +53,17 @@ const ResultViewer = ({
   const [columnFilters, setColumnFilters] = useState({});
   const [selectedDataTypes, setSelectedDataTypes] = useState({});
   const [totalRows, setTotalRows] = useState(0);
+  const [windowStart, setWindowStart] = useState(0);
   const [performanceMetrics, setPerformanceMetrics] = useState(null);
   const [hasMoreData, setHasMoreData] = useState(false);
+  const DATA_WINDOW_SIZE = 10000;
 
-  // Auto-fetch JSON data when result changes
+  // Reset window start when result changes
+  useEffect(() => {
+    setWindowStart(0);
+  }, [result]);
+
+  // Auto-fetch JSON data when result or window changes
   useEffect(() => {
     const fetchData = async () => {
       if (!dataEngine) return;
@@ -68,82 +77,64 @@ const ResultViewer = ({
 
       try {
         let parsed;
+        let count = 0;
 
         console.log("ResultViewer - Processing result:", result);
 
-        // Check if this is a processing result (pivot/aggregate/filter)
-        if (result.type && result.data) {
-          console.log("ResultViewer - Processing result type:", result.type);
+        // Get total row count first
+        if (dataEngine.get_row_count) {
+          count = dataEngine.get_row_count();
+          setTotalRows(count);
+          console.log("ResultViewer - Row count:", count);
+        }
 
-          // Results are now returned as JSON directly from Rust
-          if (typeof result.data === "string") {
+        // Check availability of windowed fetching
+        const hasWindowSupport = typeof dataEngine.get_data_json_window === 'function';
+
+        if (result.type && result.data) {
+          // Processed result
+          if (result.data instanceof Uint8Array) {
+             // Arrow IPC - fetch from engine
+             if (hasWindowSupport) {
+                const jsonResult = await dataEngine.get_data_json_window(windowStart, windowStart + DATA_WINDOW_SIZE);
+                parsed = JSON.parse(jsonResult);
+             } else {
+                // Fallback
+                const limit = Math.min(count, DATA_WINDOW_SIZE);
+                const jsonResult = await dataEngine.get_data_json_limit(limit);
+                parsed = JSON.parse(jsonResult);
+             }
+          } else if (typeof result.data === "string") {
             parsed = JSON.parse(result.data);
-            console.log("ResultViewer - Parsed JSON result:", parsed);
           } else {
-            // Data is already a JavaScript object
             parsed = result.data;
-            console.log("ResultViewer - Using data object directly:", parsed);
           }
 
           // Update totalRows to reflect the actual result count (not original dataset)
           setTotalRows(parsed.length);
           console.log(`ResultViewer - Updated totalRows to ${parsed.length} for ${result.type} operation`);
         } else if (result.data) {
-          // This is raw uploaded data - use pagination for performance
-          console.log("ResultViewer - Raw uploaded data, using pagination...");
-
-          const count = await dataEngine.get_row_count();
-          console.log("ResultViewer - Total row count:", count);
-          setTotalRows(count);
-
-          if (count === 0) {
-            console.error("ResultViewer - No rows in engine!");
-            toast.error("No data found in engine");
-            return;
+          // Raw uploaded data
+          if (count === 0 && !result.data) {
+             toast.error("No data found");
+             setIsLoading(false);
+             return;
           }
 
-          // PERFORMANCE: JSON fetch timing
-          const jsonFetchStart = performance.now();
-          console.log("⚡ PERFORMANCE: Fetching paginated JSON data...");
-
-          // Load first 10,000 rows for initial display
-          const initialLimit = Math.min(10000, count);
-          const jsonData = await dataEngine.get_data_json_paginated(0, initialLimit);
-          console.log("ResultViewer - JSON data received, length:", jsonData.length);
-
-          const jsonFetchTime = performance.now() - jsonFetchStart;
-          console.log(`✅ PERFORMANCE: JSON fetch completed in ${jsonFetchTime.toFixed(2)}ms (${(jsonData.length / 1024).toFixed(2)} KB)`);
-
-          parsed = JSON.parse(jsonData);
-          setHasMoreData(count > initialLimit);
-
-          console.log("ResultViewer - Parsed", parsed.length, "rows from JSON");
-
-          if (count > 10000) {
-            toast.info(`Loaded first ${initialLimit.toLocaleString()} of ${count.toLocaleString()} rows. Use pagination for more data.`);
+          if (hasWindowSupport) {
+            console.log(`ResultViewer - Fetching window ${windowStart} to ${windowStart + DATA_WINDOW_SIZE}`);
+            const jsonResult = await dataEngine.get_data_json_window(windowStart, windowStart + DATA_WINDOW_SIZE);
+            parsed = JSON.parse(jsonResult);
+          } else {
+             // Fallback
+             const limit = Math.min(count, DATA_WINDOW_SIZE);
+             const jsonResult = await dataEngine.get_data_json_limit(limit);
+             parsed = JSON.parse(jsonResult);
           }
-        } else {
-          console.error("ResultViewer - Invalid result structure:", result);
-          return;
         }
 
         setTableData(parsed);
-        setCurrentPage(1); // Reset to first page on new data
-        setLoadedRows(parsed.length); // Track how many rows are loaded
-
-        // PERFORMANCE: Total time
-        const totalTime = performance.now() - perfStart;
-        console.log(`🎯 PERFORMANCE: Total data processing completed in ${totalTime.toFixed(2)}ms`);
-        console.log(`📊 PERFORMANCE SUMMARY: ${parsed.length} rows loaded, ${(parsed.length / totalTime * 1000).toFixed(0)} rows/sec overall`);
-
-        // Store performance metrics for display
-        setPerformanceMetrics({
-          totalTime: totalTime.toFixed(2),
-          rowsProcessed: parsed.length,
-          throughput: (parsed.length / totalTime * 1000).toFixed(0),
-          timestamp: new Date().toISOString()
-        });
-
+        setCurrentPage(1); // Reset to first page on new data window
       } catch (error) {
         console.error("Error fetching data:", error);
         toast.error("Failed to load data");
@@ -153,7 +144,7 @@ const ResultViewer = ({
     };
 
     fetchData();
-  }, [result, dataEngine]);
+  }, [result, dataEngine, windowStart]);
 
   // Detect column data types
   const columnTypes = useMemo(() => {
@@ -411,15 +402,19 @@ const ResultViewer = ({
                 "Data Viewer"
               )}
             </CardTitle>
-            <CardDescription>
-              {filteredData.length.toLocaleString()}{" "}
-              {filteredData.length === 1 ? "row" : "rows"}
-              {filteredData.length !== tableData.length &&
-                ` (filtered from ${tableData.length.toLocaleString()})`}
-              {totalRows > tableData.length &&
-                ` • Showing first ${tableData.length.toLocaleString()} of ${totalRows.toLocaleString()} total`}
-              {" • "}
-              {columns.length} columns
+            <CardDescription className="space-y-2">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <span>
+                  {filteredData.length.toLocaleString()}{" "}
+                  {filteredData.length === 1 ? "row" : "rows"}
+                  {filteredData.length !== tableData.length &&
+                    ` (filtered from ${tableData.length.toLocaleString()})`}
+                  {totalRows > tableData.length &&
+                    ` • Showing rows ${(windowStart + 1).toLocaleString()}-${Math.min(windowStart + tableData.length, totalRows).toLocaleString()} of ${totalRows.toLocaleString()}`}
+                  {" • "}
+                  {columns.length} columns
+                </span>
+              </div>
             </CardDescription>
           </div>
           <div className="flex gap-2">
@@ -545,9 +540,9 @@ const ResultViewer = ({
                 </TableHeader>
                 <TableBody>
                   {paginatedData.map((row, index) => {
-                    const actualRowNumber = showPagination
+                    const actualRowNumber = windowStart + (showPagination
                       ? (currentPage - 1) * pageSize + index + 1
-                      : index + 1;
+                      : index + 1);
                     return (
                       <TableRow
                         key={index}
@@ -603,28 +598,49 @@ const ResultViewer = ({
           </div>
 
           {/* Pagination */}
-          {showPagination && totalPages > 1 && (
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-muted-foreground">Page</span>
-                <Select
-                  value={String(currentPage)}
-                  onValueChange={(v) => setCurrentPage(Number(v))}
-                >
-                  <SelectTrigger className="w-20">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => (
-                      <SelectItem key={pageNum} value={String(pageNum)}>
-                        {pageNum}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <span className="text-sm text-muted-foreground">of {totalPages}</span>
+          {(showPagination || totalRows > DATA_WINDOW_SIZE) && (
+            <div className="flex items-center justify-between py-2">
+              <div className="text-sm text-muted-foreground flex items-center gap-2">
+                <span>Page {currentPage} of {Math.max(1, totalPages)}</span>
+                {totalRows > DATA_WINDOW_SIZE && (
+                  <>
+                    <span className="text-slate-300 dark:text-slate-600">|</span>
+                    <span>
+                      Rows {(windowStart + 1).toLocaleString()}-{Math.min(windowStart + (paginatedData.length > 0 ? DATA_WINDOW_SIZE : 0), totalRows).toLocaleString()} of {totalRows.toLocaleString()}
+                    </span>
+                  </>
+                )}
               </div>
-              <div className="flex gap-2">
+              
+              <div className="flex gap-2 items-center">
+                {/* Global Previous Controls */}
+                {totalRows > DATA_WINDOW_SIZE && (
+                  <div className="flex gap-1 mr-2 border-r pr-2 border-slate-200 dark:border-slate-700">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setWindowStart(0)}
+                      disabled={windowStart === 0}
+                      title="First 10k"
+                      className="px-2"
+                    >
+                      <ChevronsLeft className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setWindowStart(Math.max(0, windowStart - DATA_WINDOW_SIZE))}
+                      disabled={windowStart === 0}
+                      title="Prev 10k"
+                      className="gap-1"
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                      10k
+                    </Button>
+                  </div>
+                )}
+
+                {/* Local Page Controls */}
                 <Button
                   variant="outline"
                   size="sm"
@@ -632,7 +648,7 @@ const ResultViewer = ({
                   disabled={currentPage === 1}
                 >
                   <ChevronLeft className="h-4 w-4" />
-                  Previous
+                  Prev
                 </Button>
                 <Button
                   variant="outline"
@@ -640,11 +656,38 @@ const ResultViewer = ({
                   onClick={() =>
                     setCurrentPage((p) => Math.min(totalPages, p + 1))
                   }
-                  disabled={currentPage === totalPages}
+                  disabled={currentPage === totalPages || totalPages === 0}
                 >
                   Next
                   <ChevronRight className="h-4 w-4" />
                 </Button>
+
+                {/* Global Next Controls */}
+                {totalRows > DATA_WINDOW_SIZE && (
+                  <div className="flex gap-1 ml-2 border-l pl-2 border-slate-200 dark:border-slate-700">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setWindowStart(Math.min(totalRows, windowStart + DATA_WINDOW_SIZE))}
+                      disabled={windowStart + DATA_WINDOW_SIZE >= totalRows}
+                      title="Next 10k"
+                      className="gap-1"
+                    >
+                      10k
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setWindowStart(Math.floor((totalRows - 1) / DATA_WINDOW_SIZE) * DATA_WINDOW_SIZE)}
+                      disabled={windowStart + DATA_WINDOW_SIZE >= totalRows}
+                      title="Last 10k"
+                      className="px-2"
+                    >
+                      <ChevronsRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                )}
               </div>
             </div>
           )}
