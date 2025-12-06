@@ -1,0 +1,33 @@
+{
+  "name": "data-engine",
+  "type": "module",
+  "collaborators": [
+    "Your Name <your.email@example.com>"
+  ],
+  "description": "High-performance WASM data processing engine with CSV parsing, filtering, and aggregation",
+  "version": "0.1.0",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-org/wasm-data-engine"
+  },
+  "files": [
+    "data_engine_bg.wasm",
+    "data_engine.js",
+    "data_engine_bg.js",
+    "data_engine.d.ts"
+  ],
+  "main": "data_engine.js",
+  "types": "data_engine.d.ts",
+  "sideEffects": [
+    "./data_engine.js",
+    "./snippets/*"
+  ],
+  "keywords": [
+    "wasm",
+    "data",
+    "csv",
+    "arrow",
+    "processing"
+  ]
+}
