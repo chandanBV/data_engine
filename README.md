@@ -9,6 +9,7 @@ This is a complete, production-ready boilerplate for building high-performance b
 ## What's Included
 
 ### Frontend (React + Create React App)
+
 - Modern React application with routing
 - Beautiful UI built with Tailwind CSS and shadcn/ui
 - Four interactive demo pages showcasing each use case
@@ -16,6 +17,7 @@ This is a complete, production-ready boilerplate for building high-performance b
 - Responsive design
 
 ### Backend (Rust + WASM)
+
 - **data-engine**: Process large tabular datasets with aggregations, filtering, and pivots
 - **chart-renderer**: Handle 1M+ data points with efficient rendering
 - **query-optimizer**: Execute SQL-like queries on CSV/JSON data
@@ -26,6 +28,7 @@ This is a complete, production-ready boilerplate for building high-performance b
 ### Prerequisites
 
 1. Install Rust:
+
 ```bash
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 rustup target add wasm32-unknown-unknown
@@ -33,6 +36,7 @@ cargo install wasm-pack
 ```
 
 2. Install Node.js dependencies:
+
 ```bash
 cd frontend
 yarn install
@@ -41,12 +45,14 @@ yarn install
 ### Build and Run
 
 1. Build WASM modules:
+
 ```bash
 chmod +x scripts/build-wasm.sh
 ./scripts/build-wasm.sh
 ```
 
 2. Start frontend:
+
 ```bash
 cd frontend
 yarn start
@@ -82,36 +88,44 @@ Open http://localhost:3000 in your browser.
 ## Use Cases
 
 ### 1. Data Engine
+
 Process large datasets with aggregations, pivots, and filters. Demonstrates efficient data serialization between JS and WASM.
 
 **Key Features:**
+
 - Aggregations (SUM, AVG, COUNT)
 - GROUP BY operations
 - Filtering with predicates
 - Pivot tables
 
 ### 2. Chart Renderer
+
 Render 1M+ data points smoothly at 60 FPS. Shows async chunking and downsampling techniques.
 
 **Key Features:**
+
 - Chunk-based streaming
 - Downsampling algorithms
 - Canvas 2D rendering
 - Real-time updates
 
 ### 3. Query Optimizer
+
 Execute SQL-like queries on browser-side data. Demonstrates query parsing and optimization.
 
 **Key Features:**
+
 - SQL syntax support
 - Query plan generation
 - In-memory execution
 - Result streaming
 
 ### 4. Parallel Compute
+
 Leverage multiple CPU cores with Web Workers. Shows true parallel processing in the browser.
 
 **Key Features:**
+
 - Web Workers integration
 - Work partitioning
 - Result aggregation
@@ -166,3 +180,4 @@ Note: Some features (SharedArrayBuffer, WASM threads) require specific headers a
 ## License
 
 MIT
+.
