@@ -1,0 +1,16 @@
+category,region,sales,quantity,date
+Electronics,North,1200,15,2024-01-15
+Clothing,South,800,25,2024-01-16
+Electronics,East,1500,20,2024-01-17
+Food,West,600,30,2024-01-18
+Clothing,North,950,18,2024-01-19
+Electronics,South,1100,12,2024-01-20
+Food,East,750,35,2024-01-21
+Clothing,West,900,22,2024-01-22
+Electronics,North,1300,16,2024-01-23
+Food,South,650,28,2024-01-24
+Clothing,East,850,20,2024-01-25
+Electronics,West,1400,14,2024-01-26
+Food,North,700,32,2024-01-27
+Clothing,South,920,24,2024-01-28
+Electronics,East,1250,18,2024-01-29

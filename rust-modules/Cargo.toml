@@ -1,0 +1,24 @@
+[workspace]
+resolver = "2"
+members = [
+    "data-engine",
+    # "chart-renderer",
+    # "query-optimizer",
+    # "parallel-compute",
+]
+
+[workspace.dependencies]
+wasm-bindgen = "0.2"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde-wasm-bindgen = "0.6"
+js-sys = "0.3"
+web-sys = { version = "0.3", features = ["console"] }
+
+# Aggressive optimizations for maximum CSV parsing speed
+[profile.release]
+opt-level = 3              # Maximum optimization
+lto = "fat"               # Full link-time optimization
+codegen-units = 1         # Better optimization (slower compile, faster runtime)
+panic = 'abort'           # Smaller binary, no panic unwinding
+strip = true              # Strip debug symbols

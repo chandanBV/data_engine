@@ -1,0 +1,33 @@
+[package]
+name = "data-engine"
+version = "0.1.0"
+edition = "2021"
+
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = false  # Disable wasm-opt to avoid bulk memory issues
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+wasm-bindgen = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde-wasm-bindgen = { workspace = true }
+js-sys = { workspace = true }
+web-sys = { workspace = true }
+arrow = { version = "57.0.0", features = ["csv", "json", "ipc"] }
+arrow-ord = "57.0.0"
+getrandom = { version = "0.3", features = ["wasm_js"] }
+arrow-json = "57.0.0"
+parquet = { version = "57.0.0", default-features = false, features = ["arrow", "base64", "snap"] }
+calamine = "0.26"
+bytes = "1.5"
+console_error_panic_hook = { version = "0.1", optional = true }
+wee_alloc = { version = "0.4", optional = true }
+
+[features]
+default = ["console_error_panic_hook", "wee_alloc"]
+
+# Note: Release profile is configured in workspace root Cargo.toml
+# (profiles in workspace members are ignored)
