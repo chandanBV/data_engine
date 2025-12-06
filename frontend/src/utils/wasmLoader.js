@@ -1,4 +1,4 @@
-// Centralized WASM loader to avoid duplicate imports and webpack conflicts
+// Centralized WASM loader using npm package
 
 let wasmModule = null;
 let initPromise = null;
@@ -17,12 +17,11 @@ export const loadWasmModule = async () => {
   // Create new loading promise
   initPromise = (async () => {
     try {
-      console.log("🔄 Loading WASM module...");
+      console.log("🔄 Loading WASM module from npm package...");
 
-      // Dynamic import - use the root wasm directory, not subdirectory
-      // wasm-pack outputs to wasm/ not wasm/data-engine/
-      const module = await import("../wasm/data_engine.js");
-      console.log("📦 WASM module structure:", Object.keys(module));
+      // Import from npm package
+      const module = await import("@lumel-org/data-engine");
+      console.log("📦 WASM module loaded from @lumel-org/data-engine");
 
       // Handle different export structures for different targets
       let initSync, WasmDataEngine;
@@ -92,6 +91,9 @@ export const loadWasmModule = async () => {
         "pivot",
         "filter",
         "aggregate",
+        "get_row_count",
+        "get_data_json_window",
+        "get_data_json_limit",
       ];
       console.log("🧪 Checking required methods:");
       requiredMethods.forEach((method) => {

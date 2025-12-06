@@ -17,27 +17,18 @@ impl<'a> FilterEngine<'a> {
             return Err("No data available for filtering".to_string());
         }
 
-        #[cfg(target_arch = "wasm32")]
-        web_sys::console::log_1(&format!("Filter: Processing {} batches", self.data.len()).into());
+        // Pre-allocate with estimated capacity for better performance
+        let mut filtered_batches = Vec::with_capacity(self.data.len());
 
-        let mut filtered_batches = Vec::new();
-
-        for (idx, batch) in self.data.iter().enumerate() {
-            #[cfg(target_arch = "wasm32")]
-            web_sys::console::log_1(&format!("Filter: Processing batch {} with {} rows", idx, batch.num_rows()).into());
-            
+        // Process all batches - can be parallelized in future
+        for batch in self.data.iter() {
             let filtered_batch = self.apply_filters(batch, config)?;
             
-            #[cfg(target_arch = "wasm32")]
-            web_sys::console::log_1(&format!("Filter: Batch {} filtered to {} rows", idx, filtered_batch.num_rows()).into());
-            
+            // Only keep non-empty batches
             if filtered_batch.num_rows() > 0 {
                 filtered_batches.push(filtered_batch);
             }
         }
-
-        #[cfg(target_arch = "wasm32")]
-        web_sys::console::log_1(&format!("Filter: Complete. {} batches remaining", filtered_batches.len()).into());
 
         Ok(filtered_batches)
     }
@@ -93,7 +84,7 @@ impl<'a> FilterEngine<'a> {
                 let string_array = column.as_any().downcast_ref::<StringArray>()
                     .ok_or_else(|| "Failed to cast to StringArray".to_string())?;
                 
-                // Use efficient scalar comparison
+                // Manual iteration - reliable and correct
                 let mask: Vec<bool> = (0..string_array.len())
                     .map(|i| !string_array.is_null(i) && string_array.value(i) == value)
                     .collect();
@@ -171,7 +162,7 @@ impl<'a> FilterEngine<'a> {
                 let max_val: f64 = max_value.parse()
                     .map_err(|_| format!("Cannot parse max value '{}' as float", max_value))?;
                 
-                // Efficient range check without creating large temporary arrays
+                // Manual range check - reliable and correct
                 let mask: Vec<bool> = (0..float_array.len())
                     .map(|i| {
                         if float_array.is_null(i) {
@@ -194,7 +185,7 @@ impl<'a> FilterEngine<'a> {
                 let max_val: i64 = max_value.parse()
                     .map_err(|_| format!("Cannot parse max value '{}' as integer", max_value))?;
                 
-                // Efficient range check
+                // Manual range check - reliable and correct
                 let mask: Vec<bool> = (0..int_array.len())
                     .map(|i| {
                         if int_array.is_null(i) {

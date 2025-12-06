@@ -29,6 +29,8 @@ import {
   Eye,
   ChevronLeft,
   ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
   Filter,
   Search,
 } from "lucide-react";
@@ -50,8 +52,15 @@ const ResultViewer = ({
   const [columnFilters, setColumnFilters] = useState({});
   const [selectedDataTypes, setSelectedDataTypes] = useState({});
   const [totalRows, setTotalRows] = useState(0);
+  const [windowStart, setWindowStart] = useState(0);
+  const DATA_WINDOW_SIZE = 10000;
 
-  // Auto-fetch JSON data when result changes
+  // Reset window start when result changes
+  useEffect(() => {
+    setWindowStart(0);
+  }, [result]);
+
+  // Auto-fetch JSON data when result or window changes
   useEffect(() => {
     const fetchData = async () => {
       if (!dataEngine) return;
@@ -60,82 +69,60 @@ const ResultViewer = ({
       setIsLoading(true);
       try {
         let parsed;
+        let count = 0;
 
         console.log("ResultViewer - Processing result:", result);
 
-        // Check if this is a processing result (pivot/aggregate/filter)
-        if (result.type && result.data) {
-          console.log("ResultViewer - Processing result type:", result.type);
+        // Get total row count first
+        if (dataEngine.get_row_count) {
+          count = dataEngine.get_row_count();
+          setTotalRows(count);
+          console.log("ResultViewer - Row count:", count);
+        }
 
-          // Check if data is Arrow IPC buffer (Uint8Array)
+        // Check availability of windowed fetching
+        const hasWindowSupport = typeof dataEngine.get_data_json_window === 'function';
+
+        if (result.type && result.data) {
+          // Processed result
           if (result.data instanceof Uint8Array) {
-            console.log(
-              "ResultViewer - Data is Arrow IPC buffer, need to convert to JSON"
-            );
-            // For now, we need to get JSON from the engine after the operation
-            // The operations should have updated the engine's data
-            const count = await dataEngine.get_row_count();
-            setTotalRows(count);
-            const limit = Math.min(count, 10000);
-            const jsonResult = await dataEngine.get_data_json_limit(limit);
-            parsed = JSON.parse(jsonResult);
-            console.log("ResultViewer - Converted Arrow to JSON:", parsed);
+             // Arrow IPC - fetch from engine
+             if (hasWindowSupport) {
+                const jsonResult = await dataEngine.get_data_json_window(windowStart, windowStart + DATA_WINDOW_SIZE);
+                parsed = JSON.parse(jsonResult);
+             } else {
+                // Fallback
+                const limit = Math.min(count, DATA_WINDOW_SIZE);
+                const jsonResult = await dataEngine.get_data_json_limit(limit);
+                parsed = JSON.parse(jsonResult);
+             }
           } else if (typeof result.data === "string") {
-            // Data is already JSON string
             parsed = JSON.parse(result.data);
-            console.log("ResultViewer - Parsed JSON string:", parsed);
           } else {
-            // Data is already a JavaScript object
             parsed = result.data;
-            console.log("ResultViewer - Using data object directly:", parsed);
           }
         } else if (result.data) {
-          // This is raw uploaded data with { data: ... } structure
-          console.log(
-            "ResultViewer - Raw uploaded data, fetching from engine..."
-          );
-          console.log("ResultViewer - dataEngine:", dataEngine);
-          console.log(
-            "ResultViewer - get_row_count exists:",
-            typeof dataEngine.get_row_count
-          );
-
-          const count = await dataEngine.get_row_count();
-          console.log("ResultViewer - Row count:", count);
-          setTotalRows(count);
-
-          if (count === 0) {
-            console.error("ResultViewer - No rows in engine!");
-            toast.error("No data found in engine");
-            return;
+          // Raw uploaded data
+          if (count === 0 && !result.data) {
+             toast.error("No data found");
+             setIsLoading(false);
+             return;
           }
 
-          // Load max 10,000 rows to prevent browser crash
-          const limit = Math.min(count, 10000);
-          console.log("ResultViewer - Fetching", limit, "rows...");
-          const jsonResult = await dataEngine.get_data_json_limit(limit);
-          console.log("ResultViewer - JSON result length:", jsonResult?.length);
-          console.log(
-            "ResultViewer - JSON result preview:",
-            jsonResult?.substring(0, 200)
-          );
-
-          parsed = JSON.parse(jsonResult);
-          console.log("ResultViewer - Parsed data:", parsed);
-          console.log("ResultViewer - Parsed data length:", parsed?.length);
-
-          if (count > 10000) {
-            toast.info(
-              `Loaded first ${limit.toLocaleString()} of ${count.toLocaleString()} rows for performance`
-            );
+          if (hasWindowSupport) {
+            console.log(`ResultViewer - Fetching window ${windowStart} to ${windowStart + DATA_WINDOW_SIZE}`);
+            const jsonResult = await dataEngine.get_data_json_window(windowStart, windowStart + DATA_WINDOW_SIZE);
+            parsed = JSON.parse(jsonResult);
+          } else {
+             // Fallback
+             const limit = Math.min(count, DATA_WINDOW_SIZE);
+             const jsonResult = await dataEngine.get_data_json_limit(limit);
+             parsed = JSON.parse(jsonResult);
           }
-        } else {
-          console.error("ResultViewer - Invalid result structure:", result);
-          return;
         }
 
         setTableData(parsed);
-        setCurrentPage(1); // Reset to first page on new data
+        setCurrentPage(1); // Reset to first page on new data window
       } catch (error) {
         console.error("Error fetching data:", error);
         toast.error("Failed to load data");
@@ -145,7 +132,7 @@ const ResultViewer = ({
     };
 
     fetchData();
-  }, [result, dataEngine]);
+  }, [result, dataEngine, windowStart]);
 
   // Detect column data types
   const columnTypes = useMemo(() => {
@@ -380,15 +367,19 @@ const ResultViewer = ({
                 "Data Viewer"
               )}
             </CardTitle>
-            <CardDescription>
-              {filteredData.length.toLocaleString()}{" "}
-              {filteredData.length === 1 ? "row" : "rows"}
-              {filteredData.length !== tableData.length &&
-                ` (filtered from ${tableData.length.toLocaleString()})`}
-              {totalRows > tableData.length &&
-                ` • Showing first ${tableData.length.toLocaleString()} of ${totalRows.toLocaleString()} total`}
-              {" • "}
-              {columns.length} columns
+            <CardDescription className="space-y-2">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <span>
+                  {filteredData.length.toLocaleString()}{" "}
+                  {filteredData.length === 1 ? "row" : "rows"}
+                  {filteredData.length !== tableData.length &&
+                    ` (filtered from ${tableData.length.toLocaleString()})`}
+                  {totalRows > tableData.length &&
+                    ` • Showing rows ${(windowStart + 1).toLocaleString()}-${Math.min(windowStart + tableData.length, totalRows).toLocaleString()} of ${totalRows.toLocaleString()}`}
+                  {" • "}
+                  {columns.length} columns
+                </span>
+              </div>
             </CardDescription>
           </div>
           <div className="flex gap-2">
@@ -465,9 +456,9 @@ const ResultViewer = ({
                 </TableHeader>
                 <TableBody>
                   {paginatedData.map((row, index) => {
-                    const actualRowNumber = showPagination
+                    const actualRowNumber = windowStart + (showPagination
                       ? (currentPage - 1) * pageSize + index + 1
-                      : index + 1;
+                      : index + 1);
                     return (
                       <TableRow
                         key={index}
@@ -523,12 +514,49 @@ const ResultViewer = ({
           </div>
 
           {/* Pagination */}
-          {showPagination && totalPages > 1 && (
-            <div className="flex items-center justify-between">
-              <div className="text-sm text-muted-foreground">
-                Page {currentPage} of {totalPages}
+          {(showPagination || totalRows > DATA_WINDOW_SIZE) && (
+            <div className="flex items-center justify-between py-2">
+              <div className="text-sm text-muted-foreground flex items-center gap-2">
+                <span>Page {currentPage} of {Math.max(1, totalPages)}</span>
+                {totalRows > DATA_WINDOW_SIZE && (
+                  <>
+                    <span className="text-slate-300 dark:text-slate-600">|</span>
+                    <span>
+                      Rows {(windowStart + 1).toLocaleString()}-{Math.min(windowStart + (paginatedData.length > 0 ? DATA_WINDOW_SIZE : 0), totalRows).toLocaleString()} of {totalRows.toLocaleString()}
+                    </span>
+                  </>
+                )}
               </div>
-              <div className="flex gap-2">
+              
+              <div className="flex gap-2 items-center">
+                {/* Global Previous Controls */}
+                {totalRows > DATA_WINDOW_SIZE && (
+                  <div className="flex gap-1 mr-2 border-r pr-2 border-slate-200 dark:border-slate-700">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setWindowStart(0)}
+                      disabled={windowStart === 0}
+                      title="First 10k"
+                      className="px-2"
+                    >
+                      <ChevronsLeft className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setWindowStart(Math.max(0, windowStart - DATA_WINDOW_SIZE))}
+                      disabled={windowStart === 0}
+                      title="Prev 10k"
+                      className="gap-1"
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                      10k
+                    </Button>
+                  </div>
+                )}
+
+                {/* Local Page Controls */}
                 <Button
                   variant="outline"
                   size="sm"
@@ -536,7 +564,7 @@ const ResultViewer = ({
                   disabled={currentPage === 1}
                 >
                   <ChevronLeft className="h-4 w-4" />
-                  Previous
+                  Prev
                 </Button>
                 <Button
                   variant="outline"
@@ -544,11 +572,38 @@ const ResultViewer = ({
                   onClick={() =>
                     setCurrentPage((p) => Math.min(totalPages, p + 1))
                   }
-                  disabled={currentPage === totalPages}
+                  disabled={currentPage === totalPages || totalPages === 0}
                 >
                   Next
                   <ChevronRight className="h-4 w-4" />
                 </Button>
+
+                {/* Global Next Controls */}
+                {totalRows > DATA_WINDOW_SIZE && (
+                  <div className="flex gap-1 ml-2 border-l pl-2 border-slate-200 dark:border-slate-700">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setWindowStart(Math.min(totalRows, windowStart + DATA_WINDOW_SIZE))}
+                      disabled={windowStart + DATA_WINDOW_SIZE >= totalRows}
+                      title="Next 10k"
+                      className="gap-1"
+                    >
+                      10k
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setWindowStart(Math.floor((totalRows - 1) / DATA_WINDOW_SIZE) * DATA_WINDOW_SIZE)}
+                      disabled={windowStart + DATA_WINDOW_SIZE >= totalRows}
+                      title="Last 10k"
+                      className="px-2"
+                    >
+                      <ChevronsRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                )}
               </div>
             </div>
           )}
