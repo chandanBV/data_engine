@@ -110,8 +110,6 @@ const ResultViewer = ({
             parsed = result.data;
           }
 
-          // Update totalRows to reflect the actual result count (not original dataset)
-          setTotalRows(parsed.length);
           console.log(`ResultViewer - Updated totalRows to ${parsed.length} for ${result.type} operation`);
         } else if (result.data) {
           // Raw uploaded data

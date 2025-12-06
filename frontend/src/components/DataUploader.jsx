@@ -131,6 +131,7 @@ const DataUploader = ({ onDataLoaded, dataEngine }) => {
 
   const handleFileUpload = async (file) => {
     console.log("=== File Upload Started ===");
+    const startTime = performance.now();
     console.log("File name:", file.name);
     console.log("File size:", file.size, "bytes");
     console.log("File type:", file.type);
@@ -155,7 +156,6 @@ const DataUploader = ({ onDataLoaded, dataEngine }) => {
       let result;
 
       if (fileExtension === "csv") {
-        const t0 = performance.now();
         console.log("⏱️ Starting CSV upload...");
         
         console.log("Processing CSV file...");
@@ -183,7 +183,7 @@ const DataUploader = ({ onDataLoaded, dataEngine }) => {
             const resultData = JSON.parse(result);
             if (resultData.rows) {
               const rowCount = resultData.rows.toLocaleString();
-              const totalTime = ((t4-t0)/1000).toFixed(2);
+              const totalTime = ((t4-startTime)/1000).toFixed(2);
               console.log(`⏱️ TOTAL TIME: ${totalTime}s`);
               toast.success(`⚡ Loaded ${rowCount} rows in ${totalTime}s`);
             } else {
@@ -270,8 +270,27 @@ const DataUploader = ({ onDataLoaded, dataEngine }) => {
       }
 
       // Get schema information
+      // Get schema and metrics
       const schema = await dataEngine.get_schema();
-      console.log("Schema information:", schema);
+      const endTime = performance.now();
+      const durationMs = endTime - startTime;
+      
+      let rowCount = 0;
+      try {
+        if (dataEngine.get_row_count) {
+            rowCount = dataEngine.get_row_count();
+        }
+      } catch (e) {
+        console.warn("Could not get row count:", e);
+      }
+
+      const metrics = {
+          type: 'upload',
+          rows: rowCount,
+          time: Math.round(durationMs),
+          throughput: rowCount > 0 ? (rowCount / (durationMs / 1000)) : 0,
+          details: `Uploaded ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)`
+      };
 
       onDataLoaded({
         fileName: file.name,
@@ -279,6 +298,7 @@ const DataUploader = ({ onDataLoaded, dataEngine }) => {
         fileType: fileExtension.toUpperCase(),
         schema: schema,
         result: result,
+        metrics: metrics
       });
     } catch (error) {
       console.error("=== File Upload Error ===");

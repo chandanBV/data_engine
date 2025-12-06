@@ -12,15 +12,29 @@ import {
 } from "../components/ui/card";
 import { Alert, AlertDescription } from "../components/ui/alert";
 import { Button } from "../components/ui/button";
-import { Database, Info, Zap } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
+import { Database, Info, Zap, Activity, Table as TableIcon } from "lucide-react";
 import { toast } from "sonner";
 import { createDataEngine } from "../utils/wasmLoader";
+import PerformanceMonitor from "../components/PerformanceMonitor";
 
 const EnhancedDataEnginePage = () => {
   const [dataEngine, setDataEngine] = useState(null);
   const [isInitialized, setIsInitialized] = useState(false);
   const [uploadedData, setUploadedData] = useState(null);
   const [processingResult, setProcessingResult] = useState(null);
+  const [performanceLogs, setPerformanceLogs] = useState([]);
+
+  const logPerformance = (metrics) => {
+    if (!metrics) return;
+    setPerformanceLogs((prev) => [
+      {
+        ...metrics,
+        timestamp: Date.now(),
+      },
+      ...prev,
+    ]);
+  };
 
   useEffect(() => {
     const initializeWasm = async () => {
@@ -47,10 +61,16 @@ const EnhancedDataEnginePage = () => {
   const handleDataLoaded = (data) => {
     setUploadedData(data);
     setProcessingResult(null); // Clear previous results
+    if (data.metrics) {
+      logPerformance(data.metrics);
+    }
   };
 
   const handleProcessingResult = (result) => {
     setProcessingResult(result);
+    if (result.metrics) {
+      logPerformance(result.metrics);
+    }
   };
 
   const handleReset = async () => {
@@ -130,30 +150,52 @@ const EnhancedDataEnginePage = () => {
           <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
             {/* Main content area - Data table */}
             <div className="lg:col-span-3 space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h2 className="text-lg font-semibold">Data View</h2>
-                  <p className="text-sm text-muted-foreground">
-                    {uploadedData.fileName} • {uploadedData.fileType} •{" "}
-                    {(uploadedData.fileSize / 1024).toFixed(1)} KB
-                  </p>
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setUploadedData(null)}
-                >
-                  Upload New File
-                </Button>
-              </div>
+              <Tabs defaultValue="data" className="w-full">
+                <div className="flex items-center justify-between mb-4">
+                  <TabsList>
+                    <TabsTrigger value="data" className="flex items-center gap-2">
+                      <TableIcon className="h-4 w-4" />
+                      Data View
+                    </TabsTrigger>
+                    <TabsTrigger value="performance" className="flex items-center gap-2">
+                      <Activity className="h-4 w-4" />
+                      Performance
+                    </TabsTrigger>
+                  </TabsList>
 
-              <ResultViewer
-                result={processingResult || { data: "loaded" }}
-                dataEngine={dataEngine}
-                showPagination={true}
-                initialView="table"
-                onReset={processingResult ? handleReset : null}
-              />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setUploadedData(null)}
+                  >
+                    Upload New File
+                  </Button>
+                </div>
+
+                <TabsContent value="data" className="space-y-4 mt-0">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h2 className="text-lg font-semibold">Data View</h2>
+                      <p className="text-sm text-muted-foreground">
+                        {uploadedData.fileName} • {uploadedData.fileType} •{" "}
+                        {(uploadedData.fileSize / 1024).toFixed(1)} KB
+                      </p>
+                    </div>
+                  </div>
+
+                  <ResultViewer
+                    result={processingResult || { data: "loaded" }}
+                    dataEngine={dataEngine}
+                    showPagination={true}
+                    initialView="table"
+                    onReset={processingResult ? handleReset : null}
+                  />
+                </TabsContent>
+
+                <TabsContent value="performance" className="mt-0">
+                  <PerformanceMonitor logs={performanceLogs} />
+                </TabsContent>
+              </Tabs>
             </div>
 
             {/* Sidebar - Processing controls */}
