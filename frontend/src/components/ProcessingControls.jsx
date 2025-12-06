@@ -11,15 +11,7 @@ import { toast } from 'sonner';
 
 const ProcessingControls = ({ dataEngine, onResult, schema, compact = false }) => {
   const [isProcessing, setIsProcessing] = useState(false);
-  const [activeTab, setActiveTab] = useState('pivot');
-
-  // Pivot configuration
-  const [pivotConfig, setPivotConfig] = useState({
-    rowFields: [],
-    columnFields: [],
-    valueFields: [],
-    aggregationType: 'sum'
-  });
+  const [activeTab, setActiveTab] = useState('aggregate');
 
   // Aggregation configuration
   const [aggregateConfig, setAggregateConfig] = useState({
@@ -85,70 +77,6 @@ const ProcessingControls = ({ dataEngine, onResult, schema, compact = false }) =
   };
 
   const availableFields = getAvailableFields();
-
-  const handlePivot = async () => {
-    if (!dataEngine) {
-      toast.error('Data engine not initialized');
-      return;
-    }
-
-    if (pivotConfig.rowFields.length === 0 && pivotConfig.columnFields.length === 0) {
-      toast.error('Please select at least one row or column field');
-      return;
-    }
-
-    setIsProcessing(true);
-    try {
-      // Reset to original data first to ensure correct schema
-      try {
-        await dataEngine.restore_original();
-      } catch (resetError) {
-        console.warn('Could not reset to original data:', resetError);
-      }
-
-      // Create pivot configuration
-      const config = {
-        row_fields: pivotConfig.rowFields,
-        column_fields: pivotConfig.columnFields,
-        value_fields: pivotConfig.valueFields,
-        aggregation_type: pivotConfig.aggregationType
-      };
-
-      const startTime = performance.now();
-      const result = await dataEngine.pivot(JSON.stringify(config));
-      const endTime = performance.now();
-      
-      // Parse result to get row count
-      let rowCount = 0;
-      try {
-        const parsed = typeof result === 'string' ? JSON.parse(result) : result;
-        rowCount = Array.isArray(parsed) ? parsed.length : 0;
-      } catch (e) {}
-
-      const durationMs = endTime - startTime;
-      const metrics = {
-        type: 'pivot',
-        rows: rowCount,
-        time: Math.round(durationMs),
-        throughput: rowCount > 0 ? (rowCount / (durationMs / 1000)) : 0,
-        details: `Pivot: ${pivotConfig.rowFields.join(',')} x ${pivotConfig.columnFields.join(',')}`
-      };
-
-      onResult({
-        type: 'pivot',
-        data: result,
-        config: config,
-        metrics: metrics
-      });
-      
-      toast.success('Pivot operation completed successfully!');
-    } catch (error) {
-      console.error('Pivot error:', error);
-      toast.error(`Pivot operation failed: ${error.message}`);
-    } finally {
-      setIsProcessing(false);
-    }
-  };
 
   const handleAggregate = async () => {
     if (!dataEngine) {
@@ -272,24 +200,6 @@ const ProcessingControls = ({ dataEngine, onResult, schema, compact = false }) =
     }
   };
 
-  const addFieldToArray = (array, field, setter) => {
-    if (field && !array.includes(field)) {
-      setter(prev => ({
-        ...prev,
-        [array === pivotConfig.rowFields ? 'rowFields' : 
-         array === pivotConfig.columnFields ? 'columnFields' : 'valueFields']: [...array, field]
-      }));
-    }
-  };
-
-  const removeFieldFromArray = (array, index, setter) => {
-    setter(prev => ({
-      ...prev,
-      [array === pivotConfig.rowFields ? 'rowFields' : 
-       array === pivotConfig.columnFields ? 'columnFields' : 'valueFields']: array.filter((_, i) => i !== index)
-    }));
-  };
-
   const addAggregation = () => {
     setAggregateConfig(prev => ({
       ...prev,
@@ -364,11 +274,7 @@ const ProcessingControls = ({ dataEngine, onResult, schema, compact = false }) =
       </CardHeader>
       <CardContent>
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="pivot" className="flex items-center gap-1">
-              <Table2Icon className="h-4 w-4" />
-              Pivot
-            </TabsTrigger>
+          <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="aggregate" className="flex items-center gap-1">
               <BarChart3 className="h-4 w-4" />
               Aggregate
@@ -378,112 +284,6 @@ const ProcessingControls = ({ dataEngine, onResult, schema, compact = false }) =
               Filter
             </TabsTrigger>
           </TabsList>
-
-          <TabsContent value="pivot" className="space-y-4">
-            <div className="space-y-3">
-              <div>
-                <Label>Row Fields</Label>
-                <div className="flex flex-wrap gap-1 mb-2">
-                  {pivotConfig.rowFields.map((field, index) => (
-                    <Badge key={index} variant="secondary" className="flex items-center gap-1">
-                      {field}
-                      <X 
-                        className="h-3 w-3 cursor-pointer" 
-                        onClick={() => removeFieldFromArray(pivotConfig.rowFields, index, setPivotConfig)}
-                      />
-                    </Badge>
-                  ))}
-                </div>
-                <Select onValueChange={(value) => addFieldToArray(pivotConfig.rowFields, value, setPivotConfig)}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Add row field" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {availableFields.map(field => (
-                      <SelectItem key={field} value={field}>{field}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div>
-                <Label>Column Fields</Label>
-                <div className="flex flex-wrap gap-1 mb-2">
-                  {pivotConfig.columnFields.map((field, index) => (
-                    <Badge key={index} variant="secondary" className="flex items-center gap-1">
-                      {field}
-                      <X 
-                        className="h-3 w-3 cursor-pointer" 
-                        onClick={() => removeFieldFromArray(pivotConfig.columnFields, index, setPivotConfig)}
-                      />
-                    </Badge>
-                  ))}
-                </div>
-                <Select onValueChange={(value) => addFieldToArray(pivotConfig.columnFields, value, setPivotConfig)}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Add column field" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {availableFields.map(field => (
-                      <SelectItem key={field} value={field}>{field}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div>
-                <Label>Value Fields</Label>
-                <div className="flex flex-wrap gap-1 mb-2">
-                  {pivotConfig.valueFields.map((field, index) => (
-                    <Badge key={index} variant="secondary" className="flex items-center gap-1">
-                      {field}
-                      <X 
-                        className="h-3 w-3 cursor-pointer" 
-                        onClick={() => removeFieldFromArray(pivotConfig.valueFields, index, setPivotConfig)}
-                      />
-                    </Badge>
-                  ))}
-                </div>
-                <Select onValueChange={(value) => addFieldToArray(pivotConfig.valueFields, value, setPivotConfig)}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Add value field" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {availableFields.map(field => (
-                      <SelectItem key={field} value={field}>{field}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div>
-                <Label>Aggregation Type</Label>
-                <Select value={pivotConfig.aggregationType} onValueChange={(value) => 
-                  setPivotConfig(prev => ({ ...prev, aggregationType: value }))
-                }>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="sum">Sum</SelectItem>
-                    <SelectItem value="avg">Average</SelectItem>
-                    <SelectItem value="min">Minimum</SelectItem>
-                    <SelectItem value="max">Maximum</SelectItem>
-                    <SelectItem value="count">Count</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <Button 
-              onClick={handlePivot} 
-              disabled={isProcessing}
-              className="w-full"
-            >
-              <Play className="h-4 w-4 mr-2" />
-              {isProcessing ? 'Processing...' : 'Execute Pivot'}
-            </Button>
-          </TabsContent>
 
           <TabsContent value="aggregate" className="space-y-4">
             <div className="space-y-3">

@@ -112,142 +112,168 @@ const EnhancedDataEnginePage = () => {
     <div className="min-h-screen bg-background">
       <Navigation />
 
-      <div className="container mx-auto px-4 py-8 space-y-8">
-        {/* Header */}
-        <div className="text-center space-y-4">
-          <div className="flex items-center justify-center gap-3">
-            <Database className="h-8 w-8 text-primary" />
-            <h1 className="text-3xl font-bold tracking-tight">
-              WebAssembly Data Engine
-            </h1>
-          </div>
-          <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-            High-performance data processing with Rust, Apache Arrow, and
-            WebAssembly
-          </p>
-
-          <Alert className="max-w-4xl mx-auto">
-            <Info className="h-4 w-4 text-primary" />
-            <AlertDescription>
-              <strong>Fully Functional:</strong> Upload CSV, JSON, Parquet, or
-              Excel files (1M-5M rows supported), perform pivot operations,
-              aggregations, and filtering with blazing-fast performance powered
-              by Rust and Apache Arrow.
-            </AlertDescription>
-          </Alert>
-        </div>
-
+      <div className="container mx-auto px-4 py-8">
         {!uploadedData ? (
-          // Upload state - centered upload area
-          <div className="flex items-center justify-center min-h-[400px]">
-            <DataUploader
-              onDataLoaded={handleDataLoaded}
-              dataEngine={dataEngine}
-            />
+          // PowerBI-style full-screen upload interface
+          <div className="min-h-[80vh] flex flex-col items-center justify-center space-y-8">
+            {/* Header */}
+            <div className="text-center space-y-4">
+              <div className="flex items-center justify-center gap-3">
+                <Database className="h-12 w-12 text-primary" />
+                <div>
+                  <h1 className="text-4xl font-bold tracking-tight bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">
+                    Data Engine
+                  </h1>
+                  <p className="text-xl text-muted-foreground mt-2">
+                    High-performance data processing with Rust & WebAssembly
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Main upload area - PowerBI style */}
+            <div className="w-full max-w-4xl">
+              <Card className="border-2 border-dashed border-primary/20 hover:border-primary/40 transition-colors">
+                <CardContent className="p-12">
+                  <div className="text-center space-y-6">
+                    <div className="mx-auto w-24 h-24 bg-primary/10 rounded-full flex items-center justify-center">
+                      <Database className="h-12 w-12 text-primary" />
+                    </div>
+
+                    <div className="space-y-2">
+                      <h2 className="text-2xl font-semibold">Get Data</h2>
+                      <p className="text-muted-foreground text-lg">
+                        Upload CSV, JSON, Parquet, or Excel files to start analyzing your data
+                      </p>
+                    </div>
+
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
+                      <div className="p-4 rounded-lg bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800">
+                        <div className="text-2xl mb-2">📊</div>
+                        <div className="font-medium">CSV</div>
+                        <div className="text-xs text-muted-foreground">Excel, Google Sheets</div>
+                      </div>
+                      <div className="p-4 rounded-lg bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800">
+                        <div className="text-2xl mb-2">📄</div>
+                        <div className="font-medium">JSON</div>
+                        <div className="text-xs text-muted-foreground">API responses</div>
+                      </div>
+                      <div className="p-4 rounded-lg bg-purple-50 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-800">
+                        <div className="text-2xl mb-2">🗂️</div>
+                        <div className="font-medium">Parquet</div>
+                        <div className="text-xs text-muted-foreground">Big data format</div>
+                      </div>
+                      <div className="p-4 rounded-lg bg-orange-50 dark:bg-orange-950/20 border border-orange-200 dark:border-orange-800">
+                        <div className="text-2xl mb-2">📈</div>
+                        <div className="font-medium">Excel</div>
+                        <div className="text-xs text-muted-foreground">XLSX, XLS</div>
+                      </div>
+                    </div>
+
+                    <div className="pt-6">
+                      <DataUploader
+                        onDataLoaded={handleDataLoaded}
+                        dataEngine={dataEngine}
+                      />
+                    </div>
+
+                    <div className="text-center text-sm text-muted-foreground">
+                      <p>Supports files up to 5M rows • Real-time pivot tables • Advanced filtering</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
           </div>
         ) : (
           // Data loaded state - sidebar layout
-          <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-            {/* Main content area - Data table */}
-            <div className="lg:col-span-3 space-y-4">
-              <Tabs defaultValue="data" className="w-full">
-                <div className="flex items-center justify-between mb-4">
-                  <TabsList>
-                    <TabsTrigger value="data" className="flex items-center gap-2">
-                      <TableIcon className="h-4 w-4" />
-                      Data View
-                    </TabsTrigger>
+          <div className="space-y-8">
+            {/* Header with back button */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <Database className="h-8 w-8 text-primary" />
+                <div>
+                  <h1 className="text-2xl font-bold tracking-tight">Data Engine</h1>
+                  <p className="text-sm text-muted-foreground">
+                    {uploadedData?.fileName} • {uploadedData?.fileType} •{" "}
+                    {((uploadedData?.fileSize || 0) / 1024).toFixed(1)} KB
+                  </p>
+                </div>
+              </div>
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setUploadedData(null)}
+              >
+                Upload New File
+              </Button>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+              {/* Main content area - Data viewer with drag-drop */}
+              <div className="lg:col-span-3 space-y-4">
+                <ResultViewer
+                  result={processingResult || { data: "loaded" }}
+                  dataEngine={dataEngine}
+                  showPagination={true}
+                  initialView="table"
+                  onReset={processingResult ? handleReset : null}
+                  schema={uploadedData?.schema}
+                  onResult={handleProcessingResult}
+                />
+
+                {/* Performance Tab */}
+                <Tabs defaultValue="data" className="w-full">
+                  <TabsList className="grid w-full grid-cols-2">
+                    <TabsTrigger value="data">Data View</TabsTrigger>
                     <TabsTrigger value="performance" className="flex items-center gap-2">
                       <Activity className="h-4 w-4" />
                       Performance
                     </TabsTrigger>
                   </TabsList>
 
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setUploadedData(null)}
-                  >
-                    Upload New File
-                  </Button>
-                </div>
+                  <TabsContent value="data" className="mt-4">
+                    {/* Data info is now in MainDataViewer */}
+                  </TabsContent>
 
-                <TabsContent value="data" className="space-y-4 mt-0">
-                  <div className="flex items-center justify-between">
+                  <TabsContent value="performance" className="mt-4">
+                    <PerformanceMonitor logs={performanceLogs} />
+                  </TabsContent>
+                </Tabs>
+              </div>
+
+              {/* Sidebar - Processing controls */}
+              <div className="lg:col-span-1 space-y-4">
+                <ProcessingControls
+                  dataEngine={dataEngine}
+                  onResult={handleProcessingResult}
+                  schema={uploadedData?.schema}
+                  compact={true}
+                />
+
+                {/* Quick info card */}
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-sm">Dataset Info</CardTitle>
+                  </CardHeader>
+                  <CardContent className="text-xs space-y-1">
                     <div>
-                      <h2 className="text-lg font-semibold">Data View</h2>
-                      <p className="text-sm text-muted-foreground">
-                        {uploadedData.fileName} • {uploadedData.fileType} •{" "}
-                        {(uploadedData.fileSize / 1024).toFixed(1)} KB
-                      </p>
+                      <strong>Fields:</strong>{" "}
+                      {uploadedData?.schema
+                        ? uploadedData.schema.split("Field").length - 1
+                        : 0}
                     </div>
-                  </div>
-
-                  <ResultViewer
-                    result={processingResult || { data: "loaded" }}
-                    dataEngine={dataEngine}
-                    showPagination={true}
-                    initialView="table"
-                    onReset={processingResult ? handleReset : null}
-                  />
-                </TabsContent>
-
-                <TabsContent value="performance" className="mt-0">
-                  <PerformanceMonitor logs={performanceLogs} />
-                </TabsContent>
-              </Tabs>
-            </div>
-
-            {/* Sidebar - Processing controls */}
-            <div className="lg:col-span-1 space-y-4">
-              <ProcessingControls
-                dataEngine={dataEngine}
-                onResult={handleProcessingResult}
-                schema={uploadedData?.schema}
-                compact={true}
-              />
-
-              {/* Quick info card */}
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-sm">Dataset Info</CardTitle>
-                </CardHeader>
-                <CardContent className="text-xs space-y-1">
-                  <div>
-                    <strong>Fields:</strong>{" "}
-                    {uploadedData.schema
-                      ? uploadedData.schema.split("Field").length - 1
-                      : 0}
-                  </div>
-                  <div>
-                    <strong>Size:</strong>{" "}
-                    {(uploadedData.fileSize / 1024).toFixed(1)} KB
-                  </div>
-                  <div>
-                    <strong>Type:</strong> {uploadedData.fileType}
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Engine Status */}
-              {/* <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-sm flex items-center gap-2">
-                    <Zap className="h-3 w-3 text-primary" />
-                    Engine Status
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="text-xs space-y-1">
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                    <span>WASM Ready</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                    <span>Arrow Support</span>
-                  </div>
-                </CardContent>
-              </Card> */}
+                    <div>
+                      <strong>Size:</strong>{" "}
+                      {((uploadedData?.fileSize || 0) / 1024).toFixed(1)} KB
+                    </div>
+                    <div>
+                      <strong>Type:</strong> {uploadedData?.fileType || 'Unknown'}
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
             </div>
           </div>
         )}
