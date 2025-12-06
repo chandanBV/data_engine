@@ -1,5 +1,5 @@
 use crate::config::AggregateConfig;
-use arrow::array::{Array, ArrayRef, Float64Array, StringArray, RecordBatch};
+use arrow::array::{Array, ArrayRef, Float64Array, RecordBatch, StringArray};
 // Manual aggregation implementations to avoid Arrow compute compatibility issues
 use arrow::datatypes::{DataType, Field, Schema};
 use std::collections::HashMap;
@@ -45,22 +45,29 @@ impl<'a> AggregationEngine<'a> {
         }
 
         let batch = &self.data[0];
-        
-        if config.group_by_fields.is_empty() {
+
+        let result = if config.group_by_fields.is_empty() {
             // Simple aggregation without grouping
             self.simple_aggregation(batch, config)
         } else {
             // Group by aggregation
             self.group_by_aggregation(batch, config)
-        }
+        };
+
+        result
     }
 
-    fn simple_aggregation(&self, batch: &RecordBatch, config: &AggregateConfig) -> Result<Vec<RecordBatch>, String> {
+    fn simple_aggregation(
+        &self,
+        batch: &RecordBatch,
+        config: &AggregateConfig,
+    ) -> Result<Vec<RecordBatch>, String> {
         let mut field_names = Vec::new();
         let mut arrays: Vec<ArrayRef> = Vec::new();
 
         for agg_spec in &config.aggregations {
-            let column = batch.column_by_name(&agg_spec.field)
+            let column = batch
+                .column_by_name(&agg_spec.field)
                 .ok_or_else(|| format!("Field '{}' not found", agg_spec.field))?;
 
             let op = AggOp::from_string(&agg_spec.operation)?;
@@ -70,15 +77,16 @@ impl<'a> AggregationEngine<'a> {
                 Some(alias) => alias.clone(),
                 None => format!("{}_{}", agg_spec.operation, agg_spec.field),
             };
-            
+
             field_names.push(field_name);
             arrays.push(Arc::new(Float64Array::from(vec![result])));
         }
 
-        let fields: Vec<Field> = field_names.iter()
+        let fields: Vec<Field> = field_names
+            .iter()
             .map(|name| Field::new(name, DataType::Float64, false))
             .collect();
-        
+
         let schema = Arc::new(Schema::new(fields));
         let result_batch = RecordBatch::try_new(schema, arrays)
             .map_err(|e| format!("Failed to create result batch: {}", e))?;
@@ -86,23 +94,31 @@ impl<'a> AggregationEngine<'a> {
         Ok(vec![result_batch])
     }
 
-    fn group_by_aggregation(&self, batch: &RecordBatch, config: &AggregateConfig) -> Result<Vec<RecordBatch>, String> {
+    fn group_by_aggregation(
+        &self,
+        batch: &RecordBatch,
+        config: &AggregateConfig,
+    ) -> Result<Vec<RecordBatch>, String> {
         let mut grouped_data: HashMap<String, Vec<(usize, String)>> = HashMap::new();
         let num_rows = batch.num_rows();
 
         // Group rows by the group_by_fields
         for row_idx in 0..num_rows {
             let mut group_key = String::new();
-            
+
             for (i, field) in config.group_by_fields.iter().enumerate() {
-                if i > 0 { group_key.push('|'); }
-                let column = batch.column_by_name(field)
+                if i > 0 {
+                    group_key.push('|');
+                }
+                let column = batch
+                    .column_by_name(field)
                     .ok_or_else(|| format!("Group by field '{}' not found", field))?;
                 let val = self.extract_string_value(column, row_idx);
                 group_key.push_str(&val);
             }
 
-            grouped_data.entry(group_key.clone())
+            grouped_data
+                .entry(group_key.clone())
                 .or_insert_with(Vec::new)
                 .push((row_idx, group_key));
         }
@@ -112,7 +128,7 @@ impl<'a> AggregationEngine<'a> {
 
         for (group_key, row_indices) in grouped_data {
             let mut result_row = HashMap::new();
-            
+
             // Add group by fields to result
             let group_parts: Vec<&str> = group_key.split('|').collect();
             for (i, field) in config.group_by_fields.iter().enumerate() {
@@ -123,7 +139,8 @@ impl<'a> AggregationEngine<'a> {
 
             // Compute aggregations for this group
             for agg_spec in &config.aggregations {
-                let column = batch.column_by_name(&agg_spec.field)
+                let column = batch
+                    .column_by_name(&agg_spec.field)
                     .ok_or_else(|| format!("Aggregation field '{}' not found", agg_spec.field))?;
 
                 let op = AggOp::from_string(&agg_spec.operation)?;
@@ -133,7 +150,7 @@ impl<'a> AggregationEngine<'a> {
                     Some(alias) => alias.clone(),
                     None => format!("{}_{}", agg_spec.operation, agg_spec.field),
                 };
-                
+
                 result_row.insert(field_name, result.to_string());
             }
 
@@ -147,7 +164,9 @@ impl<'a> AggregationEngine<'a> {
     fn compute_aggregation(&self, column: &ArrayRef, op: &AggOp) -> Result<f64, String> {
         match column.data_type() {
             DataType::Float64 => {
-                let float_array = column.as_any().downcast_ref::<Float64Array>()
+                let float_array = column
+                    .as_any()
+                    .downcast_ref::<Float64Array>()
                     .ok_or_else(|| "Failed to cast to Float64Array".to_string())?;
 
                 match op {
@@ -160,7 +179,7 @@ impl<'a> AggregationEngine<'a> {
                             }
                         }
                         Ok(total)
-                    },
+                    }
                     AggOp::Min => {
                         let mut min_val = f64::INFINITY;
                         for i in 0..float_array.len() {
@@ -171,8 +190,12 @@ impl<'a> AggregationEngine<'a> {
                                 }
                             }
                         }
-                        Ok(if min_val == f64::INFINITY { 0.0 } else { min_val })
-                    },
+                        Ok(if min_val == f64::INFINITY {
+                            0.0
+                        } else {
+                            min_val
+                        })
+                    }
                     AggOp::Max => {
                         let mut max_val = f64::NEG_INFINITY;
                         for i in 0..float_array.len() {
@@ -183,8 +206,12 @@ impl<'a> AggregationEngine<'a> {
                                 }
                             }
                         }
-                        Ok(if max_val == f64::NEG_INFINITY { 0.0 } else { max_val })
-                    },
+                        Ok(if max_val == f64::NEG_INFINITY {
+                            0.0
+                        } else {
+                            max_val
+                        })
+                    }
                     AggOp::Count => Ok(float_array.len() as f64),
                     AggOp::Avg => {
                         let mut total = 0.0;
@@ -199,17 +226,28 @@ impl<'a> AggregationEngine<'a> {
                     }
                 }
             }
-            _ => Err(format!("Aggregation not supported for data type: {:?}", column.data_type())),
+            _ => Err(format!(
+                "Aggregation not supported for data type: {:?}",
+                column.data_type()
+            )),
         }
     }
 
-    fn compute_group_aggregation(&self, column: &ArrayRef, op: &AggOp, row_indices: &[(usize, String)]) -> Result<f64, String> {
+    fn compute_group_aggregation(
+        &self,
+        column: &ArrayRef,
+        op: &AggOp,
+        row_indices: &[(usize, String)],
+    ) -> Result<f64, String> {
         match column.data_type() {
             DataType::Float64 => {
-                let float_array = column.as_any().downcast_ref::<Float64Array>()
+                let float_array = column
+                    .as_any()
+                    .downcast_ref::<Float64Array>()
                     .ok_or_else(|| "Failed to cast to Float64Array".to_string())?;
 
-                let values: Vec<f64> = row_indices.iter()
+                let values: Vec<f64> = row_indices
+                    .iter()
                     .filter_map(|(idx, _)| {
                         if float_array.is_null(*idx) {
                             None
@@ -231,7 +269,10 @@ impl<'a> AggregationEngine<'a> {
                     }
                 }
             }
-            _ => Err(format!("Group aggregation not supported for data type: {:?}", column.data_type())),
+            _ => Err(format!(
+                "Group aggregation not supported for data type: {:?}",
+                column.data_type()
+            )),
         }
     }
 
@@ -257,7 +298,11 @@ impl<'a> AggregationEngine<'a> {
         }
     }
 
-    fn result_rows_to_batch(&self, result_rows: Vec<HashMap<String, String>>, config: &AggregateConfig) -> Result<Vec<RecordBatch>, String> {
+    fn result_rows_to_batch(
+        &self,
+        result_rows: Vec<HashMap<String, String>>,
+        config: &AggregateConfig,
+    ) -> Result<Vec<RecordBatch>, String> {
         if result_rows.is_empty() {
             return Ok(vec![]);
         }
@@ -273,34 +318,38 @@ impl<'a> AggregationEngine<'a> {
         field_names.sort();
 
         // Create schema
-        let fields: Vec<Field> = field_names.iter()
+        let fields: Vec<Field> = field_names
+            .iter()
             .map(|name| {
                 // Group by fields are strings, aggregation results are floats
                 let is_group_field = config.group_by_fields.contains(name);
-                let data_type = if is_group_field { DataType::Utf8 } else { DataType::Float64 };
+                let data_type = if is_group_field {
+                    DataType::Utf8
+                } else {
+                    DataType::Float64
+                };
                 Field::new(name, data_type, true)
             })
             .collect();
-        
+
         let schema = Arc::new(Schema::new(fields));
 
         // Create arrays
         let mut arrays: Vec<ArrayRef> = Vec::new();
-        
+
         for field_name in &field_names {
             let is_group_field = config.group_by_fields.contains(field_name);
-            
+
             if is_group_field {
-                let string_values: Vec<Option<String>> = result_rows.iter()
+                let string_values: Vec<Option<String>> = result_rows
+                    .iter()
                     .map(|row| row.get(field_name).cloned())
                     .collect();
                 arrays.push(Arc::new(StringArray::from(string_values)));
             } else {
-                let float_values: Vec<Option<f64>> = result_rows.iter()
-                    .map(|row| {
-                        row.get(field_name)
-                            .and_then(|s| s.parse::<f64>().ok())
-                    })
+                let float_values: Vec<Option<f64>> = result_rows
+                    .iter()
+                    .map(|row| row.get(field_name).and_then(|s| s.parse::<f64>().ok()))
                     .collect();
                 arrays.push(Arc::new(Float64Array::from(float_values)));
             }
@@ -318,9 +367,10 @@ impl<'a> AggregationEngine<'a> {
             return Err("No data available".to_string());
         }
 
-        let col_idx = self.data[0].column_by_name(col_name)
+        let col_idx = self.data[0]
+            .column_by_name(col_name)
             .ok_or_else(|| format!("Column '{}' not found", col_name))?;
-        
+
         self.compute_aggregation(col_idx, &op)
     }
 }

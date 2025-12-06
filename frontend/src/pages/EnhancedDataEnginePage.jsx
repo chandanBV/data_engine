@@ -188,7 +188,7 @@ const EnhancedDataEnginePage = () => {
               </Card>
 
               {/* Engine Status */}
-              <Card>
+              {/* <Card>
                 <CardHeader className="pb-3">
                   <CardTitle className="text-sm flex items-center gap-2">
                     <Zap className="h-3 w-3 text-primary" />
@@ -205,7 +205,7 @@ const EnhancedDataEnginePage = () => {
                     <span>Arrow Support</span>
                   </div>
                 </CardContent>
-              </Card>
+              </Card> */}
             </div>
           </div>
         )}
