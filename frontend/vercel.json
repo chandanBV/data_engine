@@ -1,6 +1,5 @@
 {
     "installCommand": "yarn install",
     "buildCommand": "yarn build",
-    "outputDirectory": "build",
-    "rootDirectory": "/frontend"
+    "outputDirectory": "build"
 }
