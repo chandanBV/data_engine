@@ -1,0 +1,17 @@
+{
+  "name": "data-engine",
+  "type": "module",
+  "version": "0.1.0",
+  "files": [
+    "data_engine_bg.wasm",
+    "data_engine.js",
+    "data_engine_bg.js",
+    "data_engine.d.ts"
+  ],
+  "main": "data_engine.js",
+  "types": "data_engine.d.ts",
+  "sideEffects": [
+    "./data_engine.js",
+    "./snippets/*"
+  ]
+}
