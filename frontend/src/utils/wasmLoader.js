@@ -20,7 +20,7 @@ export const loadWasmModule = async () => {
       console.log("🔄 Loading WASM module from npm package...");
 
       // Import from npm package
-      const module = await import("@lumel-org/data-engine");
+      const module = await import("../wasm/data-engine/data_engine");
       console.log("📦 WASM module loaded from @lumel-org/data-engine");
 
       // Handle different export structures for different targets
