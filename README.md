@@ -181,3 +181,4 @@ Note: Some features (SharedArrayBuffer, WASM threads) require specific headers a
 
 MIT
 .
+
